@@ -34,9 +34,3 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-Confidential:
-DB Pwd: llm-saas@123
-Google oAuth secret: 91515317914-ukbofvf7t6q7bev46l033runa8ogntg2.apps.googleusercontent.com
-Day 1: 2:40:80 - Project Setup and Auth with Login and Signup functionality.
-

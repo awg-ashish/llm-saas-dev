@@ -13,7 +13,9 @@ export async function GET(request: Request) {
     console.log("CODE>>>>>>>>>>>>>>>>>>>>>>>", code);
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    error ?? console.log("ERROR>>>>>>>>>>>>", error);
+    if (error) {
+      console.log("ERROR>>>>>>>>>>>>", error);
+    }
     if (!error) {
       // Use x-forwarded-host if in production
       const forwardedHost = request.headers.get("x-forwarded-host");
