@@ -25,6 +25,7 @@ interface ChatInterfaceProps {
 // Define available chat models.
 const models = [
   { id: "openai:chatgpt-4o-latest", name: "OpenAI GPT-4o" },
+  { id: "openai:gpt-4o-mini-2024-07-18", name: "OpenAI GPT-4o Mini" },
   { id: "google:gemini-pro", name: "Google Gemini Pro" },
   // Add more models here if needed.
 ];

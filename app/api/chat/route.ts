@@ -1,5 +1,9 @@
 export const maxDuration = 30;
 
+// Import the POST handlers from provider routes
+import { POST as openaiPOST } from "./openai/route";
+import { POST as googlePOST } from "./google/route";
+
 export async function POST(req: Request) {
   try {
     // Clone the request to read its body
@@ -8,29 +12,16 @@ export async function POST(req: Request) {
 
     console.log("Router received request for model:", modelId);
 
-    // Determine which provider to route to
-    let routePath: string;
-
+    // Determine which provider to route to and call the appropriate handler
     if (modelId.startsWith("openai:")) {
-      routePath = "/api/chat/openai";
+      console.log("Routing to OpenAI handler");
+      return openaiPOST(req);
     } else if (modelId.startsWith("google:")) {
-      routePath = "/api/chat/google";
+      console.log("Routing to Google handler");
+      return googlePOST(req);
     } else {
       throw new Error(`Unsupported model provider for ID: ${modelId}`);
     }
-
-    console.log(`Routing request to: ${routePath}`);
-
-    // Create a new request to the appropriate route
-    const url = new URL(routePath, req.url);
-    const routeReq = new Request(url.toString(), {
-      method: req.method,
-      headers: req.headers,
-      body: req.body,
-    });
-
-    // Forward the request to the appropriate route
-    return fetch(routeReq);
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error
