@@ -10,7 +10,16 @@ export async function login(formData: FormData): Promise<void> {
     email: formData.get("email") as string,
     password: formData.get("password") as string,
   };
+  // Check if we're in development mode
+  if (process.env.NODE_ENV === "development") {
+    console.log("[Login Action] Using development mode bypass");
+    // Simulate successful login
+    revalidatePath("/dashboard");
+    redirect("/dashboard");
+    return;
+  }
 
+  // Normal authentication flow for production
   const { error } = await supabase.auth.signInWithPassword(data);
   console.log("[Login Action] Auth result:", error ? error.message : "Success");
 

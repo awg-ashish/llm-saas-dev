@@ -7,6 +7,12 @@ export async function updateSession(request: NextRequest) {
   });
 
   console.log("[Middleware] Incoming cookies:", request.cookies.getAll());
+  if (process.env.NODE_ENV === "development") {
+    console.log("[Middleware] Using development mode bypass");
+    // For development, we'll consider the user as authenticated
+    // This allows access to protected routes without actual authentication
+    return supabaseResponse;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
