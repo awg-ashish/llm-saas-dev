@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useChat } from '@ai-sdk/react';
-import { FaUser, FaRobot, FaPaperPlane } from 'react-icons/fa';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { FaUser, FaRobot, FaPaperPlane } from "react-icons/fa";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { FaSignOutAlt } from 'react-icons/fa';
+} from "@/components/ui/select";
+import { FaSignOutAlt } from "react-icons/fa";
 
 // Define the props interface for ChatInterface.
 interface ChatInterfaceProps {
@@ -24,20 +24,21 @@ interface ChatInterfaceProps {
 
 // Define available chat models.
 const models = [
-  { id: 'openai:gpt-4o', name: 'OpenAI GPT-4o' },
-  { id: 'google:gemini-pro', name: 'Google Gemini Pro' },
+  { id: "openai:chatgpt-4o-latest", name: "OpenAI GPT-4o" },
+  { id: "google:gemini-pro", name: "Google Gemini Pro" },
   // Add more models here if needed.
 ];
 
 export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
   const [selectedModel, setSelectedModel] = useState(models[0].id);
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: '/api/chat',
-    body: {
-      model: selectedModel,
-    },
-  });
+  const { messages, input, handleInputChange, handleSubmit, isLoading } =
+    useChat({
+      api: "/api/chat",
+      body: {
+        model: selectedModel,
+      },
+    });
 
   const handleModelChange = (value: string) => {
     setSelectedModel(value);
@@ -65,7 +66,12 @@ export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
             <span className="text-sm text-muted-foreground hidden sm:inline">
               Welcome, {userName}
             </span>
-            <Button variant="ghost" size="icon" onClick={onSignOut} title="Sign Out">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onSignOut}
+              title="Sign Out"
+            >
               <FaSignOutAlt className="h-4 w-4" />
               <span className="sr-only">Sign Out</span>
             </Button>
@@ -83,9 +89,11 @@ export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : ''}`}
+            className={`flex items-start gap-3 ${
+              m.role === "user" ? "justify-end" : ""
+            }`}
           >
-            {m.role !== 'user' && (
+            {m.role !== "user" && (
               <Avatar className="h-8 w-8">
                 <AvatarFallback>
                   <FaRobot />
@@ -94,14 +102,14 @@ export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
             )}
             <div
               className={`rounded-lg p-3 max-w-[75%] ${
-                m.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
+                m.role === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted"
               }`}
             >
               <p className="text-sm whitespace-pre-wrap">{m.content}</p>
             </div>
-            {m.role === 'user' && (
+            {m.role === "user" && (
               <Avatar className="h-8 w-8">
                 <AvatarFallback>
                   <FaUser />

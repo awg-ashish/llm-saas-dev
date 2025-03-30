@@ -1,60 +1,48 @@
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
-import { google } from "@ai-sdk/google";
 import type { CoreMessage } from "ai";
 
-// Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    const {
-      messages,
-      model: modelId,
-    }: { messages: CoreMessage[]; model: string } = await req.json();
+    // Clone the request to read its body
+    const clonedReq = req.clone();
+    const { model: modelId }: { model: string } = await clonedReq.json();
 
-    let provider;
-    let modelName: string;
+    console.log("Router received request for model:", modelId);
 
-    // Select provider and model based on the ID from the frontend
+    // Determine which provider to route to
+    let routePath: string;
+
     if (modelId.startsWith("openai:")) {
-      provider = openai;
-      modelName = modelId.replace("openai:", ""); // e.g., 'gpt-4o'
-      if (!process.env.OPENAI_API_KEY) {
-        throw new Error("Missing OPENAI_API_KEY environment variable");
-      }
+      routePath = "/api/chat/openai";
     } else if (modelId.startsWith("google:")) {
-      provider = google;
-      modelName = modelId.replace("google:", ""); // e.g., 'gemini-pro'
-      if (!process.env.GOOGLE_API_KEY) {
-        throw new Error("Missing GOOGLE_API_KEY environment variable");
-      }
-      // Note: The Google provider might require specific model names like 'gemini-1.5-pro-latest'
-      // Adjust modelName mapping if needed based on @ai-sdk/google documentation.
-      // For now, assuming 'gemini-pro' works directly.
+      routePath = "/api/chat/google";
     } else {
       throw new Error(`Unsupported model provider for ID: ${modelId}`);
     }
 
-    const result = await streamText({
-      model: provider(modelName),
-      messages,
-      // Optional: Add system prompt, temperature, etc.
-      // system: 'You are a helpful assistant.',
+    console.log(`Routing request to: ${routePath}`);
+
+    // Create a new request to the appropriate route
+    const url = new URL(routePath, req.url);
+    const routeReq = new Request(url.toString(), {
+      method: req.method,
+      headers: req.headers,
+      body: req.body,
     });
 
-    // Respond with the stream
-    return result.toDataStreamResponse(); // Corrected method name
+    // Forward the request to the appropriate route
+    return fetch(routeReq);
   } catch (error: unknown) {
-    console.error("Error in chat API route:", error);
-    return new Response(
-      JSON.stringify({
-        error:
-          error instanceof Error
-            ? error.message
-            : "An error occurred processing your request.",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "An error occurred processing your request.";
+    console.error("Error in chat router:", { message: errorMessage });
+
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
