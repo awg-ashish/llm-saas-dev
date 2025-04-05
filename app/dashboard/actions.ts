@@ -203,6 +203,7 @@ export async function getInitialChatData(): Promise<InitialData> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  console.log(user);
   if (!user && process.env.NODE_ENV !== "development")
     return { ok: false, error: "User not authenticated" };
 
