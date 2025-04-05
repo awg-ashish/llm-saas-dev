@@ -22,7 +22,7 @@ export default async function DashboardPage() {
 
   if (!user && process.env.NODE_ENV !== "development") {
     // A server component can return plain JSX
-    redirect("/login");
+    <p>Please Login</p>;
   }
 
   const initial = await getInitialChatData();
