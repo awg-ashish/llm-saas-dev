@@ -1,5 +1,5 @@
 // dashboard/page.tsx
-import { redirect } from "next/navigation";
+// import { redirect } from "next/navigation";
 import ClientDashboard from "./ClientDashboard";
 import {
   getInitialChatData,
