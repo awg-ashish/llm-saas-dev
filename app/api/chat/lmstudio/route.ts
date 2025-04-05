@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     // Convert the response into a friendly text-stream
     return result.toDataStreamResponse(); // Changed to toDataStreamResponse
-  } catch (error: any) {
+  } catch (error: string | any) {
     console.error("Error in LM Studio route:", error);
     // Consider more specific error handling based on potential LM Studio errors
     return new NextResponse(
