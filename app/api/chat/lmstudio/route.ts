@@ -41,12 +41,17 @@ export async function POST(req: NextRequest) {
 
     // Convert the response into a friendly text-stream
     return result.toDataStreamResponse(); // Changed to toDataStreamResponse
-  } catch (error: string | any) {
+  } catch (error: string | unknown) {
+    const message =
+      error instanceof Error // true for real Error objects
+        ? error.message
+        : "An unknown error occurred processing your request.";
+
     console.error("Error in LM Studio route:", error);
     // Consider more specific error handling based on potential LM Studio errors
     return new NextResponse(
       JSON.stringify({
-        error: error.message || "An error occurred processing your request.",
+        error: message || "An error occurred processing your request.",
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
