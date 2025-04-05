@@ -17,7 +17,7 @@ type BoolResult = { success: boolean; error?: string };
 export async function createFolder(
   name: string
 ): Promise<Folder | { error: string }> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -36,7 +36,7 @@ export async function renameFolder(
   folderId: number,
   newName: string
 ): Promise<BoolResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase
     .from("chat_folders")
     .update({ name: newName })
@@ -89,7 +89,7 @@ export async function createChat(
   title: string,
   folderId?: number | null
 ): Promise<Ok<Chat> | Fail> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -108,7 +108,7 @@ export async function renameChat(
   chatId: number,
   newTitle: string
 ): Promise<BoolResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase
     .from("chats")
     .update({ title: newTitle })
@@ -121,7 +121,7 @@ export async function moveChat(
   chatId: number,
   folderId: number | null
 ): Promise<BoolResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase
     .from("chats")
     .update({ folder_id: folderId })
@@ -131,7 +131,7 @@ export async function moveChat(
 }
 
 export async function deleteChat(chatId: number): Promise<BoolResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { error: msgErr } = await supabase
     .from("chat_messages")
@@ -155,7 +155,7 @@ export async function createChatMessage(
   mediaUrl?: string,
   creditsUsed: number = 0
 ): Promise<Ok<ChatMessage> | Fail> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -181,7 +181,7 @@ export async function createChatMessage(
 export async function getChatMessages(
   chatId: number
 ): Promise<Ok<ChatMessage[]> | Fail> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("chat_messages")
     .select("*")
@@ -199,7 +199,7 @@ export type InitialData =
   | { ok: false; error: string };
 
 export async function getInitialChatData(): Promise<InitialData> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
