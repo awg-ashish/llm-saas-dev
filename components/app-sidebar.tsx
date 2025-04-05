@@ -2,7 +2,6 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
 import { Folder, Chat } from "@/utils/types/chatTypes";
 import { SIDEBAR_FEATURES } from "./sidebar-features";
 import { ChatSidebarContent } from "./sidebar-chat";

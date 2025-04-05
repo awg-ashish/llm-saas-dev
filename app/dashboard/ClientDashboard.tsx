@@ -9,15 +9,6 @@ import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Folder, Chat } from "@/utils/types/chatTypes";
-import {
-  createFolder,
-  createChat,
-  moveChat,
-  renameFolder,
-  deleteFolder,
-  renameChat,
-  deleteChat,
-} from "./actions";
 
 export interface ClientDashboardProps {
   userName: string;
