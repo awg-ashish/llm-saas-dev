@@ -13,18 +13,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { login } from "@/app/auth/login/actions";
+import { isDevMode, setDevAuthMethod, AUTH_METHOD } from "@/utils/dev-auth";
 export function LoginForm({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
   const [isLoading, setIsLoading] = useState(false);
+  const [showSkipLink, setShowSkipLink] = useState(false);
 
-  // Social login handlers remain unchanged.
+  useEffect(() => {
+    if (isDevMode()) {
+      setShowSkipLink(true);
+    }
+  }, []); // Empty dependency array ensures it runs only once on mount
+
+  // Social login handlers with auth method tracking
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
+    // No longer setting dev auth method here
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -40,6 +49,7 @@ export function LoginForm({
 
   const handleAppleSignIn = async () => {
     setIsLoading(true);
+    // No longer setting dev auth method here
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: "apple",
@@ -89,6 +99,7 @@ export function LoginForm({
             <form
               onSubmit={() => {
                 setIsLoading(true);
+                // No longer setting dev auth method here
               }}
             >
               <div className="grid gap-6">
@@ -135,6 +146,18 @@ export function LoginForm({
                 Sign up
               </Link>
             </div>
+            {/* Add the Skip Authentication link for development mode */}
+            {showSkipLink && (
+              <div className="text-center text-sm mt-2">
+                <Link
+                  href="/dashboard"
+                  className="text-blue-500 hover:underline"
+                  onClick={() => setDevAuthMethod(AUTH_METHOD.SKIPPED)}
+                >
+                  Skip Authentication (Dev Only)
+                </Link>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
