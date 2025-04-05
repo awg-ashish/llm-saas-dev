@@ -1,7 +1,8 @@
 // dashboard/actions.ts
 "use server";
 
-import { createClient } from "@/utils/supabase/client";
+// import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/utils/supabase/server";
 import { Chat, ChatMessage, Folder } from "@/utils/types/chatTypes";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ export async function renameFolder(
 }
 
 export async function deleteFolder(folderId: number): Promise<BoolResult> {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // grab chats in that folder
   const { data: chats, error: chatsErr } = await supabase

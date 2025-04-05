@@ -11,7 +11,7 @@ import {
   renameChat,
   deleteChat,
 } from "./actions";
-import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/utils/supabase/server";
 import { Suspense } from "react";
 
 export default async function DashboardPage() {
