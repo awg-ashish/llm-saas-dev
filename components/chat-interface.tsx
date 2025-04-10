@@ -1,8 +1,9 @@
-// components/chat-interface.tsx
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useChat, Message } from "@ai-sdk/react"; // Import Message type
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { FaUser, FaRobot, FaPaperPlane } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,11 +25,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Settings, LogOut } from "lucide-react";
+import { markdownComponents } from "./MarkdownComponents"; // Import Markdown styling
 
 interface ChatInterfaceProps {
   userName: string;
   onSignOut: () => Promise<void>;
-  // Add props for chat persistence
   chatId?: number;
   initialMessages?: Message[];
 }
@@ -64,7 +65,6 @@ export function ChatInterface({
   chatId,
   initialMessages,
 }: ChatInterfaceProps) {
-  // console.log("ChatInterface received chatId:", chatId);
   const { state: sidebarState } = useSidebar();
   const isSidebarOpen = sidebarState === "expanded";
 
@@ -80,14 +80,11 @@ export function ChatInterface({
 
   const apiEndpoint = getApiEndpoint(selectedModel);
 
-  // Create a custom submit handler that will save the user message
+  // Save the user message for persistence
   const saveUserMessage = async (content: string) => {
     if (chatId) {
       try {
-        // Import the saveMessage function dynamically
         const { saveMessage } = await import("@/app/dashboard/chatActions");
-
-        // Save the user message
         await saveMessage(
           chatId,
           {
@@ -95,9 +92,8 @@ export function ChatInterface({
             content: content,
             createdAt: new Date(),
           },
-          undefined // No model ID for user messages
+          undefined
         );
-
         console.log("User message saved successfully");
       } catch (error) {
         console.error("Failed to save user message:", error);
@@ -110,23 +106,17 @@ export function ChatInterface({
     body: {
       model: selectedModel,
     },
-    // Pass persistence props to useChat
-    id: chatId?.toString(), // useChat expects string ID
+    id: chatId?.toString(),
     initialMessages: initialMessages,
-    sendExtraMessageFields: true, // Required for persistence as per docs
+    sendExtraMessageFields: true,
     onFinish: async (message) => {
       console.log("Chat finished with ID:", chatId);
-
       if (chatId) {
         try {
-          // Import the saveMessage function dynamically
           const { saveMessage, getModelIdBySlug } = await import(
             "@/app/dashboard/chatActions"
           );
-
           const modelId = await getModelIdBySlug(selectedModel);
-
-          // Save the AI's response message
           await saveMessage(
             chatId,
             {
@@ -136,7 +126,6 @@ export function ChatInterface({
             },
             modelId ?? undefined
           );
-
           console.log("AI message saved successfully");
         } catch (error) {
           console.error("Failed to save AI message:", error);
@@ -148,13 +137,9 @@ export function ChatInterface({
   // Custom submit handler that saves the user message before submitting
   const customHandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    // Only save if there's actual content and a chat ID
     if (input.trim() && chatId) {
       await saveUserMessage(input.trim());
     }
-
-    // Call the original handleSubmit
     handleSubmit(e);
   };
 
@@ -247,13 +232,24 @@ export function ChatInterface({
                 </Avatar>
               )}
               <div
-                className={`rounded-lg p-3 max-w-[75%] ${
+                className={`rounded-lg p-3 max-w-[95%] ${
                   m.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+                    ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
+                    : "bg-gradient-to-r from-slate-50 to-slate-200 prose prose-sm dark:prose-invert p-4"
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                {m.role === "user" ? (
+                  <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                ) : (
+                  <div>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
               {m.role === "user" && (
                 <Avatar className="h-8 w-8">
