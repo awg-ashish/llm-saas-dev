@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useChat } from "@ai-sdk/react";
+import { useChat, Message } from "@ai-sdk/react"; // Import Message type
 import { FaUser, FaRobot, FaPaperPlane } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +28,9 @@ import { Settings, LogOut } from "lucide-react";
 interface ChatInterfaceProps {
   userName: string;
   onSignOut: () => Promise<void>;
+  // Add props for chat persistence
+  chatId?: number;
+  initialMessages?: Message[];
 }
 
 const models = [
@@ -35,7 +38,7 @@ const models = [
   { id: "openai:gpt-4o-mini", name: "OpenAI GPT-4o mini" },
   { id: "openai:gpt-3.5-turbo", name: "OpenAI GPT-3.5 Turbo" },
   { id: "google:gemini-pro", name: "Google Gemini Pro" },
-  { id: "lmstudio:deepseek-coder-v2-lite-instruct", name: "LM Studio" },
+  { id: "lmstudio:qwen2.5-coder-7b-instruct", name: "LM Studio" },
 ];
 
 const getApiEndpoint = (modelId: string): string => {
@@ -55,7 +58,13 @@ const getApiEndpoint = (modelId: string): string => {
   }
 };
 
-export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
+export function ChatInterface({
+  userName,
+  onSignOut,
+  chatId,
+  initialMessages,
+}: ChatInterfaceProps) {
+  // console.log("ChatInterface received chatId:", chatId);
   const { state: sidebarState } = useSidebar();
   const isSidebarOpen = sidebarState === "expanded";
 
@@ -69,17 +78,85 @@ export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
   const initialModel = availableModels[0]?.id || "";
   const [selectedModel, setSelectedModel] = useState(initialModel);
 
-  const apiEndpoint = useMemo(
-    () => getApiEndpoint(selectedModel),
-    [selectedModel]
-  );
+  const apiEndpoint = getApiEndpoint(selectedModel);
+
+  // Create a custom submit handler that will save the user message
+  const saveUserMessage = async (content: string) => {
+    if (chatId) {
+      try {
+        // Import the saveMessage function dynamically
+        const { saveMessage } = await import("@/app/dashboard/chatActions");
+
+        // Save the user message
+        await saveMessage(
+          chatId,
+          {
+            role: "user",
+            content: content,
+            createdAt: new Date(),
+          },
+          undefined // No model ID for user messages
+        );
+
+        console.log("User message saved successfully");
+      } catch (error) {
+        console.error("Failed to save user message:", error);
+      }
+    }
+  };
 
   const { messages, input, handleInputChange, handleSubmit, status } = useChat({
     api: apiEndpoint,
     body: {
       model: selectedModel,
     },
+    // Pass persistence props to useChat
+    id: chatId?.toString(), // useChat expects string ID
+    initialMessages: initialMessages,
+    sendExtraMessageFields: true, // Required for persistence as per docs
+    onFinish: async (message) => {
+      console.log("Chat finished with ID:", chatId);
+
+      if (chatId) {
+        try {
+          // Import the saveMessage function dynamically
+          const { saveMessage, getModelIdBySlug } = await import(
+            "@/app/dashboard/chatActions"
+          );
+
+          const modelId = await getModelIdBySlug(selectedModel);
+
+          // Save the AI's response message
+          await saveMessage(
+            chatId,
+            {
+              role: "assistant",
+              content: message.content,
+              createdAt: new Date(),
+            },
+            modelId ?? undefined
+          );
+
+          console.log("AI message saved successfully");
+        } catch (error) {
+          console.error("Failed to save AI message:", error);
+        }
+      }
+    },
   });
+
+  // Custom submit handler that saves the user message before submitting
+  const customHandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    // Only save if there's actual content and a chat ID
+    if (input.trim() && chatId) {
+      await saveUserMessage(input.trim());
+    }
+
+    // Call the original handleSubmit
+    handleSubmit(e);
+  };
 
   const handleModelChange = (value: string) => {
     setSelectedModel(value);
@@ -204,7 +281,7 @@ export function ChatInterface({ userName, onSignOut }: ChatInterfaceProps) {
         } right-0`}
       >
         <form
-          onSubmit={handleSubmit}
+          onSubmit={customHandleSubmit}
           className="flex items-center gap-2 max-w-3xl mx-auto p-4"
         >
           <Textarea

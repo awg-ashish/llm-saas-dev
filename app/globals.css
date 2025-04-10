@@ -130,5 +130,10 @@
   .no-scrollbar {
       -ms-overflow-style: none;  /* IE and Edge */
       scrollbar-width: none;  /* Firefox */
-}
+  }
+  
+  /* Typography preview class - replacement for [&>div.min-h-[350px]]:p-6 */
+  .typography-preview > div.min-h-\[350px\] {
+      padding: calc(var(--spacing, 1rem) * 6);
+  }
 }

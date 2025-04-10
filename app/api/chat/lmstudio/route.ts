@@ -28,19 +28,56 @@ export async function POST(req: NextRequest) {
   // --- End Development Environment Check ---
 
   try {
-    const { messages } = await req.json();
+    const { messages, id: chatIdStr } = await req.json();
+
+    // Request Data Logging
+    console.log("LM Studio API Request:", {
+      messages: messages.length,
+      chatId: chatIdStr,
+    });
 
     // Ask LM Studio for a streaming text completion
     // Using the model identifier provided by the user
-    const result = await streamText({
-      model: lmstudio("deepseek-coder-v2-lite-instruct"), // Using the specified model ID
+    const result = streamText({
+      model: lmstudio("qwen2.5-coder-7b-instruct"), // Using the specified model ID
       messages,
-      // Optional: Add maxRetries if needed
-      // maxRetries: 1,
+      onError({ error }) {
+        console.error("LM Studio Stream error:", error);
+      },
+      // Remove the onFinish callback - we'll handle persistence on the client
     });
 
+    // Consume the stream to ensure it runs to completion even if client disconnects
+    result.consumeStream();
+
+    console.log("LM Studio stream created, beginning response generation");
+
+    // Log the complete response
+    (async () => {
+      try {
+        let fullResponse = "";
+        for await (const textPart of result.textStream) {
+          fullResponse += textPart;
+        }
+
+        console.log("LM Studio complete response length:", fullResponse.length);
+
+        const text = await result.text;
+        const finishReason = await result.finishReason;
+        const usage = await result.usage;
+
+        console.log("LM Studio response details:", {
+          finishReason,
+          usage,
+          textLength: text.length,
+        });
+      } catch (error) {
+        console.error("Error processing LM Studio response:", error);
+      }
+    })();
+
     // Convert the response into a friendly text-stream
-    return result.toDataStreamResponse(); // Changed to toDataStreamResponse
+    return result.toDataStreamResponse();
   } catch (error: string | unknown) {
     const message =
       error instanceof Error // true for real Error objects

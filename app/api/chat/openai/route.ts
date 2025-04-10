@@ -9,16 +9,22 @@ export async function POST(req: Request) {
   try {
     const {
       messages,
-      model: modelId,
-    }: { messages: CoreMessage[]; model: string } = await req.json();
+      model: modelSlug,
+      id: chatIdStr,
+    }: {
+      messages: CoreMessage[];
+      model: string;
+      id?: string; // Chat ID for persistence
+    } = await req.json();
 
     // Extract model name from the ID (remove "openai:" prefix)
-    const modelName = modelId.replace("openai:", "");
+    const modelName = modelSlug.replace("openai:", "");
 
     // Request Data Logging
     console.log("OpenAI API Request:", {
       messages: messages.length,
       model: modelName,
+      chatId: chatIdStr,
     });
 
     if (!process.env.OPENAI_API_KEY) {
@@ -32,7 +38,11 @@ export async function POST(req: Request) {
       onError({ error }) {
         console.error("OpenAI Stream error:", error);
       },
+      // Remove the onFinish callback - we'll handle persistence on the client
     });
+
+    // Consume the stream to ensure it runs to completion even if client disconnects
+    result.consumeStream();
 
     console.log("OpenAI stream created, beginning response generation");
 
@@ -42,10 +52,9 @@ export async function POST(req: Request) {
         let fullResponse = "";
         for await (const textPart of result.textStream) {
           fullResponse += textPart;
-          console.log("OpenAI chunk:", textPart);
         }
 
-        console.log("OpenAI complete response:", fullResponse);
+        console.log("OpenAI complete response length:", fullResponse.length);
 
         const text = await result.text;
         const finishReason = await result.finishReason;

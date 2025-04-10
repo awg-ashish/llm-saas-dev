@@ -1,7 +1,6 @@
 // dashboard/actions.ts
 "use server";
 
-// import { createClient } from "@/utils/supabase/client";
 import { createClient } from "@/utils/supabase/server";
 import { Chat, ChatMessage, Folder } from "@/utils/types/chatTypes";
 

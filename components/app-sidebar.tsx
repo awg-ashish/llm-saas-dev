@@ -43,19 +43,8 @@ interface AppSidebarProps {
   deleteChat: (chatId: number) => Promise<{ success: boolean; error?: string }>;
 }
 
-export function AppSidebar({
-  initialFolders,
-  initialChats,
-  createFolder,
-  createChat,
-  moveChat,
-  renameFolder,
-  deleteFolder,
-  renameChat,
-  deleteChat,
-}: AppSidebarProps) {
+export function AppSidebar({ initialFolders, initialChats }: AppSidebarProps) {
   const [activeFeature, setActiveFeature] = useState("chat");
-  const [activeChatId, setActiveChatId] = useState<number | null>(null);
 
   return (
     <Sidebar>
@@ -81,15 +70,6 @@ export function AppSidebar({
           <ChatSidebarContent
             initialFolders={initialFolders}
             initialChats={initialChats}
-            activeChatId={activeChatId}
-            setActiveChatId={setActiveChatId}
-            createFolder={createFolder}
-            createChat={createChat}
-            moveChat={moveChat}
-            renameFolder={renameFolder}
-            deleteFolder={deleteFolder}
-            renameChat={renameChat}
-            deleteChat={deleteChat}
           />
         )}
       </SidebarContent>

@@ -1,7 +1,6 @@
-// components/sidebar-chat.tsx
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import {
   Plus,
   Folder as FolderIcon,
@@ -31,51 +30,33 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
-import { Chat, Folder } from "@/utils/types/chatTypes";
+import { Chat, Folder } from "@/utils/types/chatTypes"; // Assuming these types are still valid
+import { useRouter, useParams } from "next/navigation";
+import {
+  createChat as createChatAction,
+  createFolder as createFolderAction,
+  moveChat as moveChatAction,
+  renameChat as renameChatAction,
+  deleteChat as deleteChatAction,
+  renameFolder as renameFolderAction,
+  deleteFolder as deleteFolderAction,
+} from "@/app/dashboard/chatActions";
 
 interface ChatSidebarContentProps {
+  // Assuming initial data is fetched by a parent Server Component
   initialFolders: Folder[];
   initialChats: Chat[];
-  activeChatId: number | null;
-  setActiveChatId: (chatId: number | null) => void;
-
-  createFolder: (name: string) => Promise<Folder | { error: string }>;
-  createChat: (
-    title: string,
-    folderId?: number | null
-  ) => Promise<Chat | { error: string }>;
-
-  moveChat: (
-    chatId: number,
-    folderId: number | null
-  ) => Promise<{ success: boolean; error?: string }>;
-  renameFolder: (
-    folderId: number,
-    newName: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  deleteFolder: (
-    folderId: number
-  ) => Promise<{ success: boolean; error?: string }>;
-  renameChat: (
-    chatId: number,
-    newName: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  deleteChat: (chatId: number) => Promise<{ success: boolean; error?: string }>;
+  // userId might be needed if actions don't get it from session implicitly
+  // userId: string;
 }
 
 export function ChatSidebarContent({
   initialFolders,
   initialChats,
-  activeChatId,
-  setActiveChatId,
-  createFolder: createFolderAction,
-  createChat: createChatAction,
-  moveChat: moveChatAction,
-  renameFolder: renameFolderAction,
-  deleteFolder: deleteFolderAction,
-  renameChat: renameChatAction,
-  deleteChat: deleteChatAction,
-}: ChatSidebarContentProps) {
+}: // userId
+ChatSidebarContentProps) {
+  const router = useRouter();
+  const params = useParams();
   const [isPending, startTransition] = useTransition();
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(
     new Set()
@@ -85,38 +66,119 @@ export function ChatSidebarContent({
   const [chatEditingId, setChatEditingId] = useState<number | null>(null);
   const [chatEditName, setChatEditName] = useState("");
 
+  // Get active chat ID from URL params
+  const activeChatId = useMemo(() => {
+    const id = params?.chatId; // Assuming the dynamic route is [chatId]
+    return id ? parseInt(Array.isArray(id) ? id[0] : id, 10) : null;
+  }, [params]);
+
+  // --- Action Handlers ---
+
+  // Create a new folder
   const handleCreateFolder = () => {
     startTransition(async () => {
-      const folderName = `New Folder ${initialFolders.length + 1}`;
-      const result = await createFolderAction(folderName);
-      if ("error" in result) {
-        console.error("Failed to create folder:", result.error);
-      } else {
+      const folderName = `New Folder`;
+      try {
+        const result = await createFolderAction(folderName);
+        router.refresh(); // Refresh to get new data
         setExpandedFolders((prev) => new Set(prev).add(result.id));
+      } catch (error) {
+        console.error("Failed to create folder:", error);
       }
     });
   };
 
-  const handleCreateChat = (folderId?: number | null) => {
+  const handleCreateChat = (folderId?: number) => {
     startTransition(async () => {
-      const chatName = `New Chat ${initialChats.length + 1}`;
-      const result = await createChatAction(chatName, folderId);
-      if ("error" in result) {
-        console.error("Failed to create chat:", result.error);
-      } else {
-        setActiveChatId(result.id);
+      const chatName = `New Chat`; // Or prompt user
+      try {
+        // Use the imported server action
+        const result = await createChatAction(chatName, folderId);
+        // Navigate to the new chat page
+        router.push(`/dashboard/chat/${result.id}`);
+      } catch (error) {
+        console.error("Failed to create chat:", error);
+        // Add user feedback (e.g., toast notification)
       }
     });
   };
 
+  // Move a chat to a different folder
   const handleMoveChat = (chatId: number, folderId: number | null) => {
     startTransition(async () => {
-      const result = await moveChatAction(chatId, folderId);
-      if (result.error) {
-        console.error("Failed to move chat:", result.error);
+      try {
+        await moveChatAction(chatId, folderId);
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to move chat:", error);
       }
     });
   };
+
+  // Rename a folder
+  const handleRenameFolder = (id: number, name: string) => {
+    startTransition(async () => {
+      try {
+        await renameFolderAction(id, name);
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to rename folder:", error);
+      }
+    });
+  };
+
+  // Delete a folder and all its chats
+  const handleDeleteFolder = (folderId: number) => {
+    startTransition(async () => {
+      try {
+        await deleteFolderAction(folderId);
+
+        // If the active chat was in this folder, navigate away
+        const activeChatIsInDeletedFolder = initialChats.find(
+          (chat) => chat.id === activeChatId && chat.folder_id === folderId
+        );
+        if (activeChatIsInDeletedFolder) {
+          router.push("/dashboard"); // Or to the first available chat
+        }
+
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to delete folder:", error);
+      }
+    });
+  };
+
+  // Rename a chat
+  const handleRenameChat = (id: number, name: string) => {
+    startTransition(async () => {
+      try {
+        await renameChatAction(id, name);
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to rename chat:", error);
+      }
+    });
+  };
+
+  // Delete a chat
+  const handleDeleteChat = (chatId: number) => {
+    startTransition(async () => {
+      try {
+        await deleteChatAction(chatId);
+
+        // If deleting the active chat, navigate away
+        if (activeChatId === chatId) {
+          router.push("/dashboard");
+        }
+
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to delete chat:", error);
+      }
+    });
+  };
+
+  // --- End Action Handlers ---
 
   const handleToggleFolder = (folderId: number) => {
     setExpandedFolders((prev) => {
@@ -144,27 +206,14 @@ export function ChatSidebarContent({
     }
   };
 
+  // Combined save handler using placeholder actions
   const handleSaveEdit = (type: "folder" | "chat") => {
     if (type === "folder" && folderEditingId) {
-      const id = folderEditingId;
-      const name = folderEditName;
+      handleRenameFolder(folderEditingId, folderEditName); // Use placeholder
       setFolderEditingId(null);
-      startTransition(async () => {
-        const result = await renameFolderAction(id, name);
-        if (result.error) {
-          console.error("Failed to rename folder:", result.error);
-        }
-      });
     } else if (type === "chat" && chatEditingId) {
-      const id = chatEditingId;
-      const name = chatEditName;
+      handleRenameChat(chatEditingId, chatEditName); // Use placeholder
       setChatEditingId(null);
-      startTransition(async () => {
-        const result = await renameChatAction(id, name);
-        if (result.error) {
-          console.error("Failed to rename chat:", result.error);
-        }
-      });
     }
   };
 
@@ -178,40 +227,17 @@ export function ChatSidebarContent({
     }
   };
 
-  const handleDeleteFolder = (folderId: number) => {
-    startTransition(async () => {
-      const result = await deleteFolderAction(folderId);
-      if (result.error) {
-        console.error("Failed to delete folder:", result.error);
-      } else {
-        const activeChat = initialChats.find(
-          (chat) => chat.folder_id === folderId
-        );
-        if (activeChat && activeChat.id === activeChatId) {
-          setActiveChatId(null);
-        }
-      }
-    });
-  };
-
-  const handleDeleteChat = (chatId: number) => {
-    startTransition(async () => {
-      const result = await deleteChatAction(chatId);
-      if (result.error) {
-        console.error("Failed to delete chat:", result.error);
-      } else {
-        if (activeChatId === chatId) {
-          setActiveChatId(null);
-        }
-      }
-    });
-  };
+  // Note: handleDeleteFolder and handleDeleteChat are now implemented above using placeholders
 
   return (
-    <>
+    <div className="z-50">
       <SidebarGroup>
         <SidebarGroupLabel>Folders</SidebarGroupLabel>
-        <SidebarGroupAction onClick={handleCreateFolder} disabled={isPending}>
+        <SidebarGroupAction
+          onClick={handleCreateFolder}
+          disabled={isPending}
+          className="hover:opacity-100 w-5 h-5 hover:cursor-pointer"
+        >
           <Plus className="size-4" />
         </SidebarGroupAction>
         <SidebarGroupContent>
@@ -219,8 +245,12 @@ export function ChatSidebarContent({
             {initialFolders.map((folder) => {
               const isExpanded = expandedFolders.has(folder.id);
               return (
-                <div key={folder.id} className="group/folder">
-                  <SidebarMenuItem className="flex items-center">
+                <div
+                  key={folder.id}
+                  className="hover:cursor-pointer hover:opacity-100"
+                >
+                  {/* Folder Header */}
+                  <SidebarMenuItem className="group/folder flex items-center relative z-10 hover:cursor-pointer hover:opacity-100">
                     {folderEditingId === folder.id ? (
                       <div className="flex-1 flex items-center gap-2">
                         <input
@@ -239,7 +269,7 @@ export function ChatSidebarContent({
                       </div>
                     ) : (
                       <SidebarMenuButton
-                        className="flex-1"
+                        className="flex-1 hover:cursor-pointer hover:opacity-100"
                         onClick={() => handleToggleFolder(folder.id)}
                         disabled={isPending}
                       >
@@ -248,7 +278,10 @@ export function ChatSidebarContent({
                         ) : (
                           <ChevronRight className="size-4" />
                         )}
-                        <FolderIcon className="size-4" />
+                        <FolderIcon
+                          className="size-5 text-yellow-500"
+                          fill="#fecf06"
+                        />
                         <span className="flex-1 truncate">{folder.name}</span>
                       </SidebarMenuButton>
                     )}
@@ -256,7 +289,7 @@ export function ChatSidebarContent({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
-                          className="opacity-0 group-hover/folder:opacity-100 p-1 disabled:opacity-50"
+                          className="opacity-25 group-hover/folder:opacity-100 p-1 disabled:opacity-0 w-5 h-5 hover:cursor-pointer"
                           disabled={isPending || folderEditingId === folder.id}
                         >
                           <MoreVertical className="size-4" />
@@ -293,8 +326,9 @@ export function ChatSidebarContent({
                     </DropdownMenu>
                   </SidebarMenuItem>
 
+                  {/* Expanded Chats */}
                   {isExpanded && (
-                    <div className="ml-4 pl-2 border-l border-border/50">
+                    <div className="ml-4 pl-2 border-l border-border/50 hover:cursor-pointer">
                       {initialChats
                         .filter((chat) => chat.folder_id === folder.id)
                         .map((chat) => (
@@ -302,8 +336,11 @@ export function ChatSidebarContent({
                             key={chat.id}
                             chat={chat}
                             isActive={activeChatId === chat.id}
-                            onSelect={() => setActiveChatId(chat.id)}
-                            onMoveToFolder={handleMoveChat}
+                            // Updated onSelect to navigate
+                            onSelect={() =>
+                              router.push(`/dashboard/chat/${chat.id}`)
+                            }
+                            onMoveToFolder={handleMoveChat} // Uses placeholder
                             folders={initialFolders}
                             editingId={chatEditingId}
                             editName={chatEditName}
@@ -313,12 +350,13 @@ export function ChatSidebarContent({
                             onSaveEdit={() => handleSaveEdit("chat")}
                             onCancelEdit={() => handleCancelEdit("chat")}
                             onEditNameChange={setChatEditName}
-                            onDelete={handleDeleteChat}
+                            onDelete={handleDeleteChat} // Uses placeholder
                             isPending={isPending}
                           />
                         ))}
-                      <SidebarMenuItem className="opacity-50 hover:opacity-100">
+                      <SidebarMenuItem className="opacity-35 hover:opacity-75 hover:cursor-pointer">
                         <SidebarMenuButton
+                          className="border hover:cursor-pointer mt-1 hover:opacity-100"
                           onClick={() => handleCreateChat(folder.id)}
                           disabled={isPending}
                         >
@@ -341,7 +379,7 @@ export function ChatSidebarContent({
           onClick={() => handleCreateChat()}
           disabled={isPending}
         >
-          <Plus className="size-4" />
+          <Plus className="size-4 hover:cursor-pointer" />
         </SidebarGroupAction>
         <SidebarGroupContent>
           <SidebarMenu>
@@ -352,8 +390,9 @@ export function ChatSidebarContent({
                   key={chat.id}
                   chat={chat}
                   isActive={activeChatId === chat.id}
-                  onSelect={() => setActiveChatId(chat.id)}
-                  onMoveToFolder={handleMoveChat}
+                  // Updated onSelect to navigate
+                  onSelect={() => router.push(`/dashboard/chat/${chat.id}`)}
+                  onMoveToFolder={handleMoveChat} // Uses placeholder
                   folders={initialFolders}
                   editingId={chatEditingId}
                   editName={chatEditName}
@@ -363,14 +402,14 @@ export function ChatSidebarContent({
                   onSaveEdit={() => handleSaveEdit("chat")}
                   onCancelEdit={() => handleCancelEdit("chat")}
                   onEditNameChange={setChatEditName}
-                  onDelete={handleDeleteChat}
+                  onDelete={handleDeleteChat} // Uses placeholder
                   isPending={isPending}
                 />
               ))}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-    </>
+    </div>
   );
 }
 
@@ -388,6 +427,7 @@ interface ChatItemProps {
   onEditNameChange: (name: string) => void;
   onDelete: (chatId: number) => void;
   isPending: boolean;
+  className?: string;
 }
 
 function ChatItem({
@@ -407,7 +447,7 @@ function ChatItem({
 }: ChatItemProps) {
   return (
     <div className="group/chat">
-      <SidebarMenuItem className="flex items-center">
+      <SidebarMenuItem className="flex items-center relative z-10">
         {editingId === chat.id ? (
           <div className="flex-1 flex items-center gap-2">
             <input
@@ -426,20 +466,20 @@ function ChatItem({
           </div>
         ) : (
           <SidebarMenuButton
-            className="flex-1"
+            className="flex-1 hover:cursor-pointer hover:opacity-100"
             onClick={onSelect}
             isActive={isActive}
             disabled={isPending}
           >
-            <MessageSquare className="size-4" />
-            <span className="flex-1 truncate">{chat.title}</span>
+            <MessageSquare className="size-3 text-[#9eb1f6]" fill="#9eb1f6" />
+            <span className="flex-1 truncate text-xs">{chat.title}</span>
           </SidebarMenuButton>
         )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="opacity-0 group-hover/chat:opacity-100 p-1 disabled:opacity-50"
+              className="opacity-25 group-hover/chat:opacity-100 p-1 disabled:opacity-50 group-hover/chat:cursor-pointer"
               disabled={isPending || editingId === chat.id}
             >
               <MoreVertical className="size-4" />
@@ -452,7 +492,10 @@ function ChatItem({
             </DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger disabled={isPending}>
-                <FolderIcon className="mr-2 size-4" />
+                <FolderIcon
+                  className="mr-2 size-5 text-yellow-500 "
+                  fill="#fecf06"
+                />
                 Move to Folder
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
