@@ -33,7 +33,6 @@ import {
 import { Chat, Folder } from "@/utils/types/chatTypes"; // Assuming these types are still valid
 import { useRouter, useParams } from "next/navigation";
 import {
-  createChat as createChatAction,
   createFolder as createFolderAction,
   moveChat as moveChatAction,
   renameChat as renameChatAction,
@@ -88,19 +87,8 @@ ChatSidebarContentProps) {
     });
   };
 
-  const handleCreateChat = (folderId?: number) => {
-    startTransition(async () => {
-      const chatName = `New Chat`; // Or prompt user
-      try {
-        // Use the imported server action
-        const result = await createChatAction(chatName, folderId);
-        // Navigate to the new chat page
-        router.push(`/dashboard/chat/${result.id}`);
-      } catch (error) {
-        console.error("Failed to create chat:", error);
-        // Add user feedback (e.g., toast notification)
-      }
-    });
+  const handleCreateChat = () => {
+    router.push("/dashboard");
   };
 
   // Move a chat to a different folder
@@ -354,16 +342,6 @@ ChatSidebarContentProps) {
                             isPending={isPending}
                           />
                         ))}
-                      <SidebarMenuItem className="opacity-35 hover:opacity-75 hover:cursor-pointer">
-                        <SidebarMenuButton
-                          className="border hover:cursor-pointer mt-1 hover:opacity-100"
-                          onClick={() => handleCreateChat(folder.id)}
-                          disabled={isPending}
-                        >
-                          <Plus className="mr-2 size-3" />
-                          <span className="text-xs">New Chat</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
                     </div>
                   )}
                 </div>

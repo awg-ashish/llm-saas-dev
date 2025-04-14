@@ -1,4 +1,3 @@
-// dashboard/actions.ts
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
@@ -224,4 +223,37 @@ export async function getInitialChatData(): Promise<InitialData> {
   if (chatsErr) return { ok: false, error: chatsErr.message };
 
   return { ok: true, folders: folders as Folder[], chats: chats as Chat[] };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// MODELS
+// ──────────────────────────────────────────────────────────────────────────────
+export type ModelData = {
+  id: number;
+  model_name: string;
+  model_type: string;
+  slug: string;
+  description: string | null;
+  is_active: boolean | null;
+};
+export type ModelsResult =
+  | { ok: true; models: ModelData[] }
+  | { ok: false; error: string };
+
+export async function getModels(): Promise<ModelsResult> {
+  const supabase = await createClient();
+
+  // No user check needed if models are public or RLS handles it
+  const { data, error } = await supabase
+    .from("models")
+    .select("id, model_name, model_type, slug, description, is_active")
+    .eq("is_active", true) // Only fetch active models
+    .order("id", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching models:", error);
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, models: data as ModelData[] };
 }

@@ -10,6 +10,7 @@ import {
   deleteFolder,
   renameChat,
   deleteChat,
+  getModels, // Import getModels
 } from "./actions";
 import { createClient } from "@/utils/supabase/server";
 import { Suspense } from "react";
@@ -30,6 +31,13 @@ export default async function DashboardPage() {
     return <div className="p-6 text-center text-red-500">{initial.error}</div>;
   }
 
+  // Fetch models
+  const modelsData = await getModels();
+  if (!modelsData.ok) {
+    // Handle error fetching models, maybe show a message or use an empty array
+    console.error("Failed to load models:", modelsData.error);
+  }
+
   return (
     <Suspense>
       <ClientDashboard
@@ -44,6 +52,9 @@ export default async function DashboardPage() {
         deleteFolder={deleteFolder}
         renameChat={renameChat}
         deleteChat={deleteChat}
+        // Pass models down
+        availableModels={modelsData.ok ? modelsData.models : []}
+        // No initialModelId needed for the main dashboard page
       />
     </Suspense>
   );

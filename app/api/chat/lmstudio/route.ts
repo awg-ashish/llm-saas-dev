@@ -28,18 +28,27 @@ export async function POST(req: NextRequest) {
   // --- End Development Environment Check ---
 
   try {
-    const { messages, id: chatIdStr } = await req.json();
+    // Extract model and messages from the request body
+    const {
+      messages,
+      model: modelSlug, // e.g., "lmstudio:qwen2.5-coder-7b-instruct"
+      id: chatIdStr,
+    } = await req.json();
+
+    // Extract the actual model name to pass to the provider
+    const modelName = modelSlug.replace("lmstudio:", "");
 
     // Request Data Logging
     console.log("LM Studio API Request:", {
+      model: modelName, // Log the extracted model name
       messages: messages.length,
       chatId: chatIdStr,
     });
 
     // Ask LM Studio for a streaming text completion
-    // Using the model identifier provided by the user
-    const result = streamText({
-      model: lmstudio("qwen2.5-coder-7b-instruct"), // Using the specified model ID
+    // Use the dynamically extracted model name
+    const result = await streamText({
+      model: lmstudio(modelName), // Use the extracted model name
       messages,
       onError({ error }) {
         console.error("LM Studio Stream error:", error);

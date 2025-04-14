@@ -29,7 +29,8 @@ export interface ChatSummary {
 
 export async function createChat(
   title: string,
-  folderId?: number
+  folderId?: number,
+  modelId?: number | null // Changed parameter from modelSlug to modelId
 ): Promise<{ id: number }> {
   const supabase = await createClient();
 
@@ -49,7 +50,7 @@ export async function createChat(
       user_id: user.id,
       title: title || "New Chat", // Default title if none provided
       folder_id: folderId,
-      // model_id is not set here as per plan
+      model_id: modelId, // Use the passed modelId here
     })
     .select("id")
     .single();
@@ -576,23 +577,13 @@ export async function createFolder(
       name,
       type,
     });
-
+    console.log("Folder created:", result);
     // The createFolderPersistence function returns the data from Supabase,
     // but we need to extract the ID for consistency with createChat
     let folderId: number | null = null;
 
-    // Cast to any to avoid TypeScript errors
-    const anyResult = result as unknown;
-
-    if (
-      anyResult &&
-      Array.isArray(anyResult) &&
-      anyResult.length > 0 &&
-      anyResult[0] &&
-      typeof anyResult[0] === "object" &&
-      "id" in anyResult[0]
-    ) {
-      folderId = anyResult[0].id;
+    if (result && typeof result === "object" && "id" in result) {
+      folderId = result.id;
     }
 
     if (!folderId) {
@@ -664,5 +655,103 @@ export async function renameFolder(
   } catch (error) {
     console.error(`Error renaming folder ${folderId}:`, error);
     throw new Error(`Failed to rename folder: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Generates a title for a chat based on the first user message using OpenAI.
+ * This runs asynchronously and updates the title in the background.
+ *
+ * @param chatId - The ID of the chat to update
+ * @param userMessage - The first message sent by the user
+ * @returns A promise that resolves when the operation is complete or fails
+ */
+export async function generateChatTitle(
+  chatId: number,
+  userMessage: string
+): Promise<void> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("User not authenticated for title generation:", userError);
+      // Don't throw, just return as this is a background task
+      return;
+    }
+
+    // Ensure OPENAI_API_KEY is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY environment variable is not set.");
+      return;
+    }
+
+    // Call OpenAI API with a specific prompt for title generation
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini", // Use the specified model
+        messages: [
+          {
+            role: "system",
+            content:
+              "Generate a short, catchy title (max 40 characters) for a chat based on the user's first message. Return only the title text without quotes or additional formatting.",
+          },
+          {
+            role: "user",
+            content: userMessage,
+          },
+        ],
+        max_tokens: 30, // Limit response length
+        temperature: 0.7, // Adjust creativity
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("OpenAI API error:", response.status, errorData);
+      throw new Error(`OpenAI API request failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // Check if choices exist and have content
+    if (
+      !data.choices ||
+      data.choices.length === 0 ||
+      !data.choices[0].message ||
+      !data.choices[0].message.content
+    ) {
+      console.error("Invalid response structure from OpenAI:", data);
+      throw new Error("Failed to parse title from OpenAI response.");
+    }
+
+    const generatedTitle = data.choices[0].message.content.trim();
+
+    // Update the chat title in the database
+    const { error: updateError } = await supabase
+      .from("chats")
+      .update({ title: generatedTitle })
+      .eq("id", chatId)
+      .eq("user_id", user.id); // Ensure user owns the chat
+
+    if (updateError) {
+      console.error("Error updating chat title in database:", updateError);
+      // Don't throw, just log the error
+    } else {
+      console.log(`Chat ${chatId} title updated to: "${generatedTitle}"`);
+      // Optionally: Trigger a revalidation or notification if needed for real-time sidebar update
+      // revalidatePath('/dashboard'); // Example if using Next.js App Router cache invalidation
+    }
+  } catch (error) {
+    console.error("Failed to generate or update chat title:", error);
+    // Log the error but don't let it crash the main chat flow
   }
 }

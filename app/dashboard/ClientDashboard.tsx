@@ -9,6 +9,8 @@ import { PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Folder, Chat } from "@/utils/types/chatTypes";
 import { Message } from "ai";
+// Import ModelData type from actions.ts
+import { ModelData } from "./actions"; // Adjust path if necessary
 
 export interface ClientDashboardProps {
   userName: string;
@@ -17,6 +19,9 @@ export interface ClientDashboardProps {
   // Props for the specific chat being displayed
   currentChatId?: number;
   initialMessages?: Message[];
+  // Add models props
+  availableModels: ModelData[];
+  initialModelId?: number;
 
   createFolder?: (name: string) => Promise<Folder | { error: string }>;
   createChat?: (
@@ -58,6 +63,9 @@ function DashboardContent({
   // Destructure new props
   currentChatId,
   initialMessages,
+  // Destructure models props
+  availableModels,
+  initialModelId,
 }: ClientDashboardProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -83,7 +91,7 @@ function DashboardContent({
   return (
     <>
       {/* Sidebar toggle button */}
-      <div className="fixed left-0 top-1/2 -translate-y-1/2">
+      <div className="fixed left-0 top-1/2 -translate-y-1/2 z-10">
         <button
           onClick={toggleSidebar}
           className={`flex items-center justify-center h-8 w-8 rounded-r-md bg-card hover:bg-muted transition-all ${
@@ -156,6 +164,9 @@ function DashboardContent({
             // Pass down the specific chat props
             chatId={currentChatId}
             initialMessages={initialMessages}
+            // Pass models props
+            availableModels={availableModels}
+            initialModelId={initialModelId}
           />
         </div>
       </div>

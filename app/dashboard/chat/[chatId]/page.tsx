@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { getInitialChatData } from "@/app/dashboard/actions"; // For sidebar data
+import { getInitialChatData, getModels } from "@/app/dashboard/actions"; // Import getModels
 import { loadChatMessages } from "@/app/dashboard/chatActions"; // For specific chat messages
 import ClientDashboard from "@/app/dashboard/ClientDashboard"; // The main client wrapper
 import { Message } from "ai"; // Import Message type
@@ -63,7 +63,33 @@ export default async function ChatPage({ params }: ChatPageProps) {
     // For now, we'll let it proceed with empty messages.
   }
 
-  // We need to pass chatId and initialMessages to ChatInterface,
+  // Fetch models
+  const modelsData = await getModels();
+  if (!modelsData.ok) {
+    console.error("Failed to load models:", modelsData.error);
+    // Handle error, maybe return an error page or use empty array
+  }
+
+  // Fetch the initial model ID for this specific chat
+  let initialModelId = null;
+  try {
+    const { data: chatData, error: chatError } = await supabase
+      .from("chats")
+      .select("model_id")
+      .eq("id", chatIdNum)
+      .eq("user_id", user.id) // Ensure user owns the chat
+      .single();
+
+    if (chatError) {
+      console.error(`Failed to fetch chat data for ${chatIdNum}:`, chatError);
+    } else {
+      initialModelId = chatData?.model_id;
+    }
+  } catch (error) {
+    console.error(`Error fetching model for chat ${chatIdNum}:`, error);
+  }
+
+  // We need to pass chatId, initialMessages, availableModels, and initialModelId to ChatInterface,
   // which is rendered inside ClientDashboard.
   // We will modify ClientDashboard next to accept these props.
 
@@ -81,10 +107,13 @@ export default async function ChatPage({ params }: ChatPageProps) {
         userName={user.email ?? "User"}
         initialFolders={initialSidebarData.folders}
         initialChats={initialSidebarData.chats}
-        // Pass down chatId and initialMessages for ChatInterface
+        // Pass down chat-specific props and models
         currentChatId={chatIdNum}
         initialMessages={initialMessages}
-        // No longer passing server functions to avoid the "Functions cannot be passed directly" error
+        availableModels={modelsData.ok ? modelsData.models : []}
+        initialModelId={initialModelId}
+        // Server actions are passed from the parent page component if needed,
+        // but ClientDashboard doesn't seem to require them directly anymore.
       />
     </Suspense>
   );

@@ -55,6 +55,7 @@ export async function createChat({
 export async function deleteChat(chatId: number) {
   const supabase = await createClient();
 
+  // Then, delete the chat itself
   const { data, error } = await supabase
     .from("chats")
     .delete()
@@ -63,6 +64,7 @@ export async function deleteChat(chatId: number) {
   if (error) {
     throw new Error(`deleteChat error: ${error.message}`);
   }
+
   return data;
 }
 
@@ -130,7 +132,10 @@ export async function createFolder({
 
   const { data, error } = await supabase
     .from("chat_folders")
-    .insert([{ user_id: userId, name, type }]);
+    .insert([{ user_id: userId, name, type }])
+    .select()
+    .single();
+  console.log("[supabase/chatPersistence]: ", data);
 
   if (error) {
     throw new Error(`createFolder error: ${error.message}`);

@@ -1,17 +1,64 @@
 import React from "react";
 import Image from "next/image"; // Import Next.js Image component
-import { Light as SyntaxHighlighter } from "react-syntax-highlighter";
-import { tomorrowNightBlue } from "react-syntax-highlighter/dist/esm/styles/hljs";
-import type { CSSProperties } from "react";
-
-// Spread the imported theme into a new object to ensure it's a plain record
-const theme = { ...tomorrowNightBlue };
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"; // Changed Light to Prism
+import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Button } from "@/components/ui/button"; // Added Button import
+import { Copy, Check } from "lucide-react"; // Added icon imports
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"; // Added hook import
 
 interface CodeProps extends React.HTMLAttributes<HTMLElement> {
   inline?: boolean;
   className?: string;
   children?: React.ReactNode; // Made children optional
 }
+
+// Helper component for code blocks with copy functionality
+interface InternalCodeBlockProps extends React.HTMLAttributes<HTMLElement> {
+  language: string;
+  codeString: string;
+}
+
+const InternalCodeBlock: React.FC<InternalCodeBlockProps> = ({
+  language,
+  codeString,
+  ...props
+}) => {
+  const { isCopied, handleCopy } = useCopyToClipboard({ text: codeString });
+
+  return (
+    <div className="h-fit">
+      {" "}
+      {/* Added group, bg, rounded, margin */}
+      <div className="flex items-center justify-between px-2">
+        {" "}
+        {/* Header for lang + button */}
+        <span className="text-xs text-muted-foreground">{language}</span>
+        <Button
+          onClick={handleCopy}
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 opacity-75 hover:opacity-100 hover:cursor-pointer transition-opacity" // Adjusted visibility/positioning
+        >
+          {isCopied ? (
+            <Check className="h-4 w-4 opacity-100 text-green-800" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+          <span className="sr-only">Copy code</span>
+        </Button>
+      </div>
+      <SyntaxHighlighter
+        className="rounded-lg" // Removed className="rounded-lg" as parent div handles rounding
+        style={vs as any} // eslint-disable-line @typescript-eslint/no-explicit-any
+        language={language}
+        PreTag="div"
+        {...props}
+      >
+        {codeString}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
 
 export const markdownComponents = {
   // Paragraphs with dark gray text
@@ -30,41 +77,32 @@ export const markdownComponents = {
   ),
 
   // Code block with syntax highlighting and inline code styling
-  code: ({ inline, className, children, ...props }: CodeProps) => {
+  code: ({ className, children, ...props }: CodeProps) => {
     const match = /language-(\w+)/.exec(className || "");
-    if (inline) {
+
+    // Inline code
+    if (!(className && match)) {
       return (
         <code
-          className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-800"
+          className="border rounded px-1 py-0.5 font-mono text-sm bg-muted text-muted-foreground" // Adjusted inline style slightly
           {...props}
         >
           {children}
         </code>
       );
     }
-    return match ? (
-      <div className="relative p-2">
-        <span className="absolute top-1 left-2 p-2 text-xs text-gray-400">
-          {match[1]}
-        </span>
-
-        <SyntaxHighlighter
-          className="rounded-lg"
-          //eslint-disable-next-line @typescript-eslint/no-explicit-any
-          style={theme as any} // Revert to 'as any' to resolve persistent type error
-          language={match[1]}
-          PreTag="div"
-          customStyle={
-            {
-              padding: 24,
-            } as CSSProperties
-          } // Added type assertion here
-          {...props}
-        >
-          {String(children).replace(/\n$/, "")}
-        </SyntaxHighlighter>
-      </div>
-    ) : null;
+    // Block code
+    else {
+      const language = match[1] || "code"; // Get language or default to text
+      const codeString = String(children).replace(/\n$/, ""); // Extract code string
+      return (
+        <InternalCodeBlock
+          language={language}
+          codeString={codeString}
+          {...props} // Pass down other props
+        />
+      );
+    }
   },
 
   // Unordered list styling
