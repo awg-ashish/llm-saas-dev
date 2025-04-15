@@ -448,7 +448,9 @@ export async function getModelIdBySlug(
  * @param chatId - The ID of the chat to delete
  * @returns A promise that resolves when the chat is deleted
  */
-export async function deleteChat(chatId: number): Promise<void> {
+export async function deleteChat(
+  chatId: number
+): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient();
 
   const {
@@ -457,28 +459,17 @@ export async function deleteChat(chatId: number): Promise<void> {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    // {
-    //   process.env.NODE_ENV === "development"
-    //     ? console.error("User not authenticated:", userError)
-    //     : "";
-    // }
     redirect("/login");
   }
 
   try {
     await deleteChatPersistence(chatId);
-    // {
-    //   process.env.NODE_ENV === "development"
-    //     ? console.log(`Chat ${chatId} deleted successfully`)
-    //     : "";
-    // }
+    return { success: true };
   } catch (error) {
-    // {
-    //   process.env.NODE_ENV === "development"
-    //     ? console.error(`Error deleting chat ${chatId}:`, error)
-    //     : "";
-    // }
-    throw new Error(`Failed to delete chat: ${(error as Error).message}`);
+    return {
+      success: false,
+      error: `Failed to delete chat: ${(error as Error).message}`,
+    };
   }
 }
 
@@ -570,7 +561,7 @@ export async function renameChat(
 export async function createFolder(
   name: string,
   type: string = "folder"
-): Promise<{ id: number }> {
+): Promise<{ success: boolean; id?: number; error?: string }> {
   const supabase = await createClient();
 
   const {
@@ -589,24 +580,25 @@ export async function createFolder(
       name,
       type,
     });
-    console.log("Folder created:", result);
-    // The createFolderPersistence function returns the data from Supabase,
-    // but we need to extract the ID for consistency with createChat
-    let folderId: number | null = null;
 
+    let folderId: number | null = null;
     if (result && typeof result === "object" && "id" in result) {
       folderId = result.id;
     }
 
     if (!folderId) {
-      throw new Error("Failed to create folder: No ID returned");
+      return {
+        success: false,
+        error: "Failed to create folder: No ID returned",
+      };
     }
 
-    console.log(`Folder created with ID: ${folderId}`);
-    return { id: folderId };
+    return { success: true, id: folderId };
   } catch (error) {
-    console.error(`Error creating folder:`, error);
-    throw new Error(`Failed to create folder: ${(error as Error).message}`);
+    return {
+      success: false,
+      error: `Failed to create folder: ${(error as Error).message}`,
+    };
   }
 }
 
@@ -616,7 +608,9 @@ export async function createFolder(
  * @param folderId - The ID of the folder to delete
  * @returns A promise that resolves when the folder is deleted
  */
-export async function deleteFolder(folderId: number): Promise<void> {
+export async function deleteFolder(
+  folderId: number
+): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient();
 
   const {
@@ -631,10 +625,12 @@ export async function deleteFolder(folderId: number): Promise<void> {
 
   try {
     await deleteFolderPersistence(folderId);
-    console.log(`Folder ${folderId} and all its chats deleted successfully`);
+    return { success: true };
   } catch (error) {
-    console.error(`Error deleting folder ${folderId}:`, error);
-    throw new Error(`Failed to delete folder: ${(error as Error).message}`);
+    return {
+      success: false,
+      error: `Failed to delete folder: ${(error as Error).message}`,
+    };
   }
 }
 

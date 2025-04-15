@@ -25,6 +25,7 @@ import {
 import { Settings, LogOut } from "lucide-react";
 import { AIMessage } from "./AIMessage"; // Import the new AIMessage component
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 // Import ModelData type
 import { ModelData } from "@/app/dashboard/actions"; // Adjust path if necessary
 
@@ -159,6 +160,7 @@ export function ChatInterface({
     if (input.trim()) {
       if (!chatId) {
         // On dashboard route, create a new chat first
+        const toastId = toast.loading("Creating new chat...");
         try {
           const userMessage = input.trim();
           // Import all needed actions
@@ -193,10 +195,11 @@ export function ChatInterface({
 
           // 4. Redirect to the new chat immediately
           // The chat page will load the saved user message
+          toast.success("Chat created successfully", { id: toastId });
           router.push(`/dashboard/chat/${newChatId}`);
         } catch (error) {
           console.error("Failed to create new chat:", error);
-          // Optionally: Show an error message to the user
+          toast.error("Failed to create chat", { id: toastId });
         }
       } else {
         // Already on a chat page, save the message and use the normal submit flow

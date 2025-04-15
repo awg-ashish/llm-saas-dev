@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useMemo } from "react";
+import { toast } from "sonner";
 import {
   Plus,
   Folder as FolderIcon,
@@ -75,15 +76,22 @@ ChatSidebarContentProps) {
 
   // Create a new folder
   const handleCreateFolder = () => {
-    startTransition(async () => {
-      const folderName = `New Folder`;
-      try {
-        const result = await createFolderAction(folderName);
-        router.refresh(); // Refresh to get new data
-        setExpandedFolders((prev) => new Set(prev).add(result.id));
-      } catch (error) {
-        console.error("Failed to create folder:", error);
+    const folderName = `New Folder`; // Define name outside promise for success message
+    const promise = createFolderAction(folderName).then((result) => {
+      if (!result.success || typeof result.id !== "number") {
+        throw new Error(result.error || "Failed to create folder");
       }
+      router.refresh(); // Refresh on success
+      setExpandedFolders((prev) => new Set(prev).add(result.id!));
+      return result; // Pass result to success handler
+    });
+
+    startTransition(() => {
+      toast.promise(promise, {
+        loading: "Creating folder...",
+        success: `Folder "${folderName}" created!`,
+        error: (err) => err.message || "Failed to create folder.",
+      });
     });
   };
 
@@ -93,76 +101,99 @@ ChatSidebarContentProps) {
 
   // Move a chat to a different folder
   const handleMoveChat = (chatId: number, folderId: number | null) => {
-    startTransition(async () => {
-      try {
-        await moveChatAction(chatId, folderId);
-        router.refresh();
-      } catch (error) {
-        console.error("Failed to move chat:", error);
-      }
+    // moveChatAction returns void on success, throws error on failure
+    const promise = moveChatAction(chatId, folderId).then(() => {
+      router.refresh();
+      // No explicit return needed for success case with toast.promise
+    });
+
+    startTransition(() => {
+      toast.promise(promise, {
+        loading: "Moving chat...",
+        success: "Chat moved successfully!",
+        error: (err) => err.message || "Failed to move chat.", // Error comes from rejection
+      });
     });
   };
 
   // Rename a folder
   const handleRenameFolder = (id: number, name: string) => {
-    startTransition(async () => {
-      try {
-        await renameFolderAction(id, name);
-        router.refresh();
-      } catch (error) {
-        console.error("Failed to rename folder:", error);
-      }
+    // renameFolderAction returns void on success, throws error on failure
+    const promise = renameFolderAction(id, name).then(() => {
+      router.refresh();
+    });
+
+    startTransition(() => {
+      toast.promise(promise, {
+        loading: "Renaming folder...",
+        success: `Folder renamed to "${name}"!`,
+        error: (err) => err.message || "Failed to rename folder.",
+      });
     });
   };
 
   // Delete a folder and all its chats
   const handleDeleteFolder = (folderId: number) => {
-    startTransition(async () => {
-      try {
-        await deleteFolderAction(folderId);
-
-        // If the active chat was in this folder, navigate away
-        const activeChatIsInDeletedFolder = initialChats.find(
-          (chat) => chat.id === activeChatId && chat.folder_id === folderId
-        );
-        if (activeChatIsInDeletedFolder) {
-          router.push("/dashboard"); // Or to the first available chat
-        }
-
-        router.refresh();
-      } catch (error) {
-        console.error("Failed to delete folder:", error);
+    const promise = deleteFolderAction(folderId).then((result) => {
+      if (!result.success) {
+        throw new Error(result.error || "Failed to delete folder");
       }
+      // If the active chat was in this folder, navigate away
+      const activeChatIsInDeletedFolder = initialChats.find(
+        (chat) => chat.id === activeChatId && chat.folder_id === folderId
+      );
+      if (activeChatIsInDeletedFolder) {
+        router.push("/dashboard"); // Or to the first available chat
+      }
+      router.refresh();
+      return result;
+    });
+
+    startTransition(() => {
+      toast.promise(promise, {
+        loading: "Deleting folder...",
+        success: "Folder deleted successfully!",
+        error: (err) => err.message || "Failed to delete folder.",
+      });
     });
   };
 
   // Rename a chat
   const handleRenameChat = (id: number, name: string) => {
-    startTransition(async () => {
-      try {
-        await renameChatAction(id, name);
-        router.refresh();
-      } catch (error) {
-        console.error("Failed to rename chat:", error);
-      }
+    // renameChatAction returns void on success, throws error on failure
+    const promise = renameChatAction(id, name).then(() => {
+      router.refresh();
+    });
+
+    startTransition(() => {
+      toast.promise(promise, {
+        loading: "Renaming chat...",
+        success: `Chat renamed to "${name}"!`,
+        error: (err) => err.message || "Failed to rename chat.",
+      });
     });
   };
 
   // Delete a chat
   const handleDeleteChat = (chatId: number) => {
-    startTransition(async () => {
-      try {
-        await deleteChatAction(chatId);
-
-        // If deleting the active chat, navigate away
-        if (activeChatId === chatId) {
-          router.push("/dashboard");
-        }
-
-        router.refresh();
-      } catch (error) {
-        console.error("Failed to delete chat:", error);
+    const promise = deleteChatAction(chatId).then((result) => {
+      if (!result.success) {
+        throw new Error(result.error || "Failed to delete chat");
       }
+      // If deleting the active chat, navigate away
+      if (activeChatId === chatId) {
+        router.push("/dashboard");
+      }
+      router.refresh();
+      return result;
+    });
+
+    startTransition(() => {
+      toast.promise(promise, {
+        loading: "Deleting chat...",
+        success: "Chat deleted successfully!",
+        error: (err) => err.message || "Failed to delete chat.",
+      });
     });
   };
 
