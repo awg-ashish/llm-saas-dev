@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import type { CoreMessage } from "ai";
 
 // Allow streaming responses up to 300 seconds
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
