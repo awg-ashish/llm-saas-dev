@@ -2,8 +2,8 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import type { CoreMessage } from "ai";
 
-// Allow streaming responses up to 30 seconds
-export const maxDuration = 30;
+// Allow streaming responses up to 300 seconds
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     }
 
     // Create a result with the streamText function
-    const result = await streamText({
+    const result = streamText({
       model: openai(modelName),
       messages,
       onError({ error }) {

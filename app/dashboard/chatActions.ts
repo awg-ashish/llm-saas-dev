@@ -457,15 +457,27 @@ export async function deleteChat(chatId: number): Promise<void> {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    console.error("User not authenticated:", userError);
+    // {
+    //   process.env.NODE_ENV === "development"
+    //     ? console.error("User not authenticated:", userError)
+    //     : "";
+    // }
     redirect("/login");
   }
 
   try {
     await deleteChatPersistence(chatId);
-    console.log(`Chat ${chatId} deleted successfully`);
+    // {
+    //   process.env.NODE_ENV === "development"
+    //     ? console.log(`Chat ${chatId} deleted successfully`)
+    //     : "";
+    // }
   } catch (error) {
-    console.error(`Error deleting chat ${chatId}:`, error);
+    // {
+    //   process.env.NODE_ENV === "development"
+    //     ? console.error(`Error deleting chat ${chatId}:`, error)
+    //     : "";
+    // }
     throw new Error(`Failed to delete chat: ${(error as Error).message}`);
   }
 }
