@@ -17,7 +17,7 @@ export interface ClientDashboardProps {
   initialFolders: Folder[];
   initialChats: Chat[];
   // Props for the specific chat being displayed
-  currentChatId?: number;
+  currentChatId?: string; // Changed to string
   initialMessages?: Message[];
   // Add models props
   availableModels: ModelData[];
@@ -30,7 +30,7 @@ export interface ClientDashboardProps {
   ) => Promise<Chat | { error: string }>;
 
   moveChat?: (
-    chatId: number,
+    chatId: string, // Changed to string
     folderId: number | null
   ) => Promise<{ success: boolean; error?: string }>;
   renameFolder?: (
@@ -41,11 +41,11 @@ export interface ClientDashboardProps {
     folderId: number
   ) => Promise<{ success: boolean; error?: string }>;
   renameChat?: (
-    chatId: number,
+    chatId: string, // Changed to string
     newName: string
   ) => Promise<{ success: boolean; error?: string }>;
   deleteChat?: (
-    chatId: number
+    chatId: string // Changed to string
   ) => Promise<{ success: boolean; error?: string }>;
 }
 

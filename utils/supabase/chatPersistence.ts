@@ -52,7 +52,8 @@ export async function createChat({
  * @returns The deleted chat record.
  * @throws Error if the deletion fails.
  */
-export async function deleteChat(chatId: number) {
+export async function deleteChat(chatId: string) {
+  // Changed to string
   const supabase = await createClient();
 
   // Then, delete the chat itself
@@ -76,7 +77,8 @@ export async function deleteChat(chatId: number) {
  * @returns The updated chat record.
  * @throws Error if the update fails.
  */
-export async function moveChat(chatId: number, folderId: number) {
+export async function moveChat(chatId: string, folderId: number) {
+  // Changed to string
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -98,7 +100,8 @@ export async function moveChat(chatId: number, folderId: number) {
  * @returns The updated chat record.
  * @throws Error if the update fails.
  */
-export async function renameChat(chatId: number, newTitle: string) {
+export async function renameChat(chatId: string, newTitle: string) {
+  // Changed to string
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -208,7 +211,7 @@ export async function renameFolder(folderId: number, newName: string) {
  * @returns The created message record
  */
 export async function appendChatMessage(
-  chatId: number,
+  chatId: string, // Changed to string
   message: {
     role: string;
     content: string;

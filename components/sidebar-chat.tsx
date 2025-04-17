@@ -63,13 +63,13 @@ ChatSidebarContentProps) {
   );
   const [folderEditingId, setFolderEditingId] = useState<number | null>(null);
   const [folderEditName, setFolderEditName] = useState("");
-  const [chatEditingId, setChatEditingId] = useState<number | null>(null);
+  const [chatEditingId, setChatEditingId] = useState<string | null>(null); // Keep as string | null
   const [chatEditName, setChatEditName] = useState("");
 
-  // Get active chat ID from URL params
+  // Get active chat ID from URL params - now it's a string (UUID)
   const activeChatId = useMemo(() => {
     const id = params?.chatId; // Assuming the dynamic route is [chatId]
-    return id ? parseInt(Array.isArray(id) ? id[0] : id, 10) : null;
+    return id ? (Array.isArray(id) ? id[0] : id) : null; // Use the string directly
   }, [params]);
 
   // --- Action Handlers ---
@@ -100,7 +100,8 @@ ChatSidebarContentProps) {
   };
 
   // Move a chat to a different folder
-  const handleMoveChat = (chatId: number, folderId: number | null) => {
+  const handleMoveChat = (chatId: string, folderId: number | null) => {
+    // Changed chatId to string
     // moveChatAction returns void on success, throws error on failure
     const promise = moveChatAction(chatId, folderId).then(() => {
       router.refresh();
@@ -139,6 +140,7 @@ ChatSidebarContentProps) {
         throw new Error(result.error || "Failed to delete folder");
       }
       // If the active chat was in this folder, navigate away
+      // Compare string activeChatId with string chat.id
       const activeChatIsInDeletedFolder = initialChats.find(
         (chat) => chat.id === activeChatId && chat.folder_id === folderId
       );
@@ -159,7 +161,8 @@ ChatSidebarContentProps) {
   };
 
   // Rename a chat
-  const handleRenameChat = (id: number, name: string) => {
+  const handleRenameChat = (id: string, name: string) => {
+    // Changed id to string
     // renameChatAction returns void on success, throws error on failure
     const promise = renameChatAction(id, name).then(() => {
       router.refresh();
@@ -175,7 +178,8 @@ ChatSidebarContentProps) {
   };
 
   // Delete a chat
-  const handleDeleteChat = (chatId: number) => {
+  const handleDeleteChat = (chatId: string) => {
+    // Changed chatId to string
     const promise = deleteChatAction(chatId).then((result) => {
       if (!result.success) {
         throw new Error(result.error || "Failed to delete chat");
@@ -211,27 +215,30 @@ ChatSidebarContentProps) {
     });
   };
 
+  // id can now be string (for chat) or number (for folder)
   const handleStartEditing = (
     type: "folder" | "chat",
-    id: number,
+    id: number | string,
     currentName: string
   ) => {
-    if (type === "folder") {
-      setFolderEditingId(id);
+    if (type === "folder" && typeof id === "number") {
+      setFolderEditingId(id); // id is number here
       setFolderEditName(currentName);
-    } else {
-      setChatEditingId(id);
+      setChatEditingId(null);
+    } else if (type === "chat" && typeof id === "string") {
+      setChatEditingId(id); // id is string here
       setChatEditName(currentName);
+      setFolderEditingId(null);
     }
   };
 
-  // Combined save handler using placeholder actions
+  // Combined save handler
   const handleSaveEdit = (type: "folder" | "chat") => {
-    if (type === "folder" && folderEditingId) {
-      handleRenameFolder(folderEditingId, folderEditName); // Use placeholder
+    if (type === "folder" && folderEditingId !== null) {
+      handleRenameFolder(folderEditingId, folderEditName);
       setFolderEditingId(null);
-    } else if (type === "chat" && chatEditingId) {
-      handleRenameChat(chatEditingId, chatEditName); // Use placeholder
+    } else if (type === "chat" && chatEditingId !== null) {
+      handleRenameChat(chatEditingId, chatEditName);
       setChatEditingId(null);
     }
   };
@@ -241,7 +248,7 @@ ChatSidebarContentProps) {
       setFolderEditingId(null);
       setFolderEditName("");
     } else {
-      setChatEditingId(null);
+      setChatEditingId(null); // Reset chat editing ID
       setChatEditName("");
     }
   };
@@ -309,6 +316,7 @@ ChatSidebarContentProps) {
                       <DropdownMenuTrigger asChild>
                         <button
                           className="opacity-25 group-hover/folder:opacity-100 p-1 disabled:opacity-0 w-5 h-5 hover:cursor-pointer"
+                          // Compare number === number
                           disabled={isPending || folderEditingId === folder.id}
                         >
                           <MoreVertical className="size-4" />
@@ -352,24 +360,23 @@ ChatSidebarContentProps) {
                         .filter((chat) => chat.folder_id === folder.id)
                         .map((chat) => (
                           <ChatItem
-                            key={chat.id}
+                            key={chat.id} // chat.id is string
                             chat={chat}
-                            isActive={activeChatId === chat.id}
+                            isActive={activeChatId === chat.id} // Compare string === string
                             // Updated onSelect to navigate
-                            onSelect={() =>
-                              router.push(`/dashboard/chat/${chat.id}`)
+                            onSelect={
+                              () => router.push(`/dashboard/chat/${chat.id}`) // chat.id is string
                             }
-                            onMoveToFolder={handleMoveChat} // Uses placeholder
+                            onMoveToFolder={handleMoveChat}
                             folders={initialFolders}
-                            editingId={chatEditingId}
+                            editingId={chatEditingId} // Pass string ID
                             editName={chatEditName}
-                            onStartEdit={(type, id, name) =>
-                              handleStartEditing(type, id, name)
-                            }
+                            // Pass the main handler function directly
+                            onStartEdit={handleStartEditing}
                             onSaveEdit={() => handleSaveEdit("chat")}
                             onCancelEdit={() => handleCancelEdit("chat")}
                             onEditNameChange={setChatEditName}
-                            onDelete={handleDeleteChat} // Uses placeholder
+                            onDelete={() => handleDeleteChat(chat.id)}
                             isPending={isPending}
                           />
                         ))}
@@ -396,22 +403,21 @@ ChatSidebarContentProps) {
               .filter((chat) => !chat.folder_id)
               .map((chat) => (
                 <ChatItem
-                  key={chat.id}
+                  key={chat.id} // chat.id is string
                   chat={chat}
-                  isActive={activeChatId === chat.id}
+                  isActive={activeChatId === chat.id} // Compare string === string
                   // Updated onSelect to navigate
-                  onSelect={() => router.push(`/dashboard/chat/${chat.id}`)}
-                  onMoveToFolder={handleMoveChat} // Uses placeholder
+                  onSelect={() => router.push(`/dashboard/chat/${chat.id}`)} // chat.id is string
+                  onMoveToFolder={handleMoveChat}
                   folders={initialFolders}
-                  editingId={chatEditingId}
+                  editingId={chatEditingId} // Pass string ID
                   editName={chatEditName}
-                  onStartEdit={(type, id, name) =>
-                    handleStartEditing(type, id, name)
-                  }
+                  // Pass the main handler function directly
+                  onStartEdit={handleStartEditing}
                   onSaveEdit={() => handleSaveEdit("chat")}
                   onCancelEdit={() => handleCancelEdit("chat")}
                   onEditNameChange={setChatEditName}
-                  onDelete={handleDeleteChat} // Uses placeholder
+                  onDelete={() => handleDeleteChat(chat.id)}
                   isPending={isPending}
                 />
               ))}
@@ -423,18 +429,23 @@ ChatSidebarContentProps) {
 }
 
 interface ChatItemProps {
-  chat: Chat;
+  chat: Chat; // Assuming Chat type has id: string now
   isActive: boolean;
   onSelect: () => void;
-  onMoveToFolder: (chatId: number, folderId: number | null) => void;
+  onMoveToFolder: (chatId: string, folderId: number | null) => void;
   folders: Folder[];
-  editingId: number | null;
+  editingId: string | null;
   editName: string;
-  onStartEdit: (type: "chat", id: number, name: string) => void;
+  // Corrected onStartEdit prop type to match parent handler
+  onStartEdit: (
+    type: "folder" | "chat",
+    id: number | string,
+    name: string
+  ) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   onEditNameChange: (name: string) => void;
-  onDelete: (chatId: number) => void;
+  onDelete: (chatId: string) => void;
   isPending: boolean;
   className?: string;
 }
@@ -457,6 +468,7 @@ function ChatItem({
   return (
     <div className="group/chat">
       <SidebarMenuItem className="flex items-center relative z-10">
+        {/* Compare string === string */}
         {editingId === chat.id ? (
           <div className="flex-1 flex items-center gap-2">
             <input
@@ -489,6 +501,7 @@ function ChatItem({
           <DropdownMenuTrigger asChild>
             <button
               className="opacity-25 group-hover/chat:opacity-100 p-1 disabled:opacity-50 group-hover/chat:cursor-pointer"
+              // Compare string === string
               disabled={isPending || editingId === chat.id}
             >
               <MoreVertical className="size-4" />
@@ -539,6 +552,7 @@ function ChatItem({
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault();
+                // Call the passed handler with specific arguments for this chat item
                 onStartEdit("chat", chat.id, chat.title);
               }}
               disabled={isPending}

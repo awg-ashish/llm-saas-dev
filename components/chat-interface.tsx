@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
-import { useChat, Message } from "@ai-sdk/react"; // Import Message type
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"; // Add useCallback
+import { useChat, Message, UseChatHelpers } from "@ai-sdk/react"; // Import Message type and UseChatHelpers
+import { v4 as uuidv4 } from "uuid"; // Import uuid
 import { FaUser, FaRobot, FaPaperPlane } from "react-icons/fa";
+import { Square } from "lucide-react"; // Import Square icon for stop
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -24,19 +26,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Settings, LogOut } from "lucide-react";
 import { AIMessage } from "./AIMessage"; // Import the new AIMessage component
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation"; // Import useSearchParams
 import { toast } from "sonner";
 // Import ModelData type
 import { ModelData } from "@/app/dashboard/actions"; // Adjust path if necessary
+import { TypingIndicator } from "@/components/ui/typing-indicator";
 
 interface ChatInterfaceProps {
   userName: string;
   onSignOut: () => Promise<void>;
-  chatId?: number;
+  chatId?: string; // Changed to string for UUID
   initialMessages?: Message[];
   // Add models props
   availableModels: ModelData[];
-  initialModelId?: number;
+  initialModelId?: number; // Keep as number, relates to models table
 }
 
 // Remove the hardcoded models array
@@ -58,6 +61,7 @@ export function ChatInterface({
   initialModelId,
 }: ChatInterfaceProps) {
   const router = useRouter();
+  const searchParams = useSearchParams(); // Get search params
   const { state: sidebarState } = useSidebar();
   const isSidebarOpen = sidebarState === "expanded";
 
@@ -84,9 +88,12 @@ export function ChatInterface({
     return foundModel?.id || availableModels[0]?.id || null;
   });
   // State to track chats for which the initial AI response has been triggered
-  const [autoTriggeredChats, setAutoTriggeredChats] = useState<Set<number>>(
+  // Use string for chatId
+  const [autoTriggeredChats, setAutoTriggeredChats] = useState<Set<string>>(
     new Set()
   );
+  // State to track if initial chat setup is done
+  const [initialSetupDone, setInitialSetupDone] = useState(false);
 
   // Update the model ID when the slug changes
   const handleModelChange = (value: string) => {
@@ -96,118 +103,118 @@ export function ChatInterface({
     setSelectedModelId(foundModel?.id || null);
   };
 
-  // Save the user message for persistence
-  const saveUserMessage = async (chatIdToUse: number, content: string) => {
-    // Removed the outer if(chatId) check as this function is now called with a specific ID
+  // Save the user message for persistence - chatIdToUse is now string
+  const saveUserMessage = async (chatIdToUse: string, content: string) => {
     try {
       const { saveMessage } = await import("@/app/dashboard/chatActions");
       await saveMessage(
-        chatIdToUse,
-        {
-          role: "user",
-          content: content,
-          createdAt: new Date(),
-        },
-        undefined
+        chatIdToUse, // Pass string UUID
+        { role: "user", content: content, createdAt: new Date() },
+        undefined // Model ID not needed for user message save here
       );
-      console.log("User message saved successfully");
+      console.log(`User message saved for chat ${chatIdToUse}`);
     } catch (error) {
       console.error("Failed to save user message:", error);
+      // Optionally show toast error
     }
-    // Removed the extra closing brace here that was causing scope issues
   };
 
-  const { messages, input, handleInputChange, handleSubmit, status, reload } =
-    useChat({
-      // Use a single consistent API endpoint
-      api: "/api/chat",
-      // Pass the selected model in the body
-      body: {
-        model: selectedModel,
-      },
-      id: chatId?.toString(),
-      initialMessages: initialMessages,
-      sendExtraMessageFields: true,
-      onFinish: async (message) => {
-        console.log("Chat finished with ID:", chatId);
-        if (chatId) {
-          try {
-            const { saveMessage } = await import("@/app/dashboard/chatActions");
-            // Use selectedModelId which is now tracked in state
-            // const modelId = await getModelIdBySlug(selectedModel); // No longer needed
-            await saveMessage(
-              chatId,
-              {
-                // Added missing opening brace for the message object
-                role: "assistant",
-                content: message.content,
-                createdAt: new Date(),
-              },
-              selectedModelId ?? undefined // Handle null case
-            );
-            console.log("AI message saved successfully");
-          } catch (error) {
-            console.error("Failed to save AI message:", error);
-          }
-        }
-      },
-    });
-
-  // Custom submit handler that saves the user message before submitting
-  const customHandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    if (input.trim()) {
-      if (!chatId) {
-        // On dashboard route, create a new chat first
-        const toastId = toast.loading("Creating new chat...");
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    status,
+    reload,
+    stop, // Import stop
+    append, // Import append
+  } = useChat({
+    // Use a single consistent API endpoint
+    api: "/api/chat",
+    // Pass the selected model in the body
+    body: {
+      model: selectedModel,
+    },
+    id: chatId, // Pass string UUID directly
+    initialMessages: initialMessages,
+    sendExtraMessageFields: true, // Keep this if needed by API
+    onFinish: async (message) => {
+      console.log("AI response finished for chat:", chatId);
+      if (chatId && message.role === "assistant") {
+        // Ensure it's an assistant message
         try {
-          const userMessage = input.trim();
-          // Import all needed actions
-          const { createChat, saveMessage, generateChatTitle } = await import(
-            "@/app/dashboard/chatActions"
-          );
-
-          // 1. Create a new chat with the selected model ID
-          const result = await createChat(
-            "New Chat",
-            undefined,
-            selectedModelId ?? undefined // Correctly pass number or undefined
-          );
-          const newChatId = result.id;
-
-          // 2. Save the user message to the new chat, including the model ID
+          const { saveMessage } = await import("@/app/dashboard/chatActions");
           await saveMessage(
-            // Use saveMessage directly here
-            newChatId,
+            chatId, // Pass string UUID
             {
-              role: "user",
-              content: userMessage,
+              role: "assistant",
+              content: message.content,
               createdAt: new Date(),
             },
-            selectedModelId ?? undefined // Handle null case
+            selectedModelId ?? undefined // Pass model ID for AI message
           );
-
-          // 3. Trigger title generation asynchronously (fire and forget)
-          generateChatTitle(newChatId, userMessage).catch((err) =>
-            console.error("Background title generation failed:", err)
-          );
-
-          // 4. Redirect to the new chat immediately
-          // The chat page will load the saved user message
-          toast.success("Chat created successfully", { id: toastId });
-          router.push(`/dashboard/chat/${newChatId}`);
+          console.log(`AI message saved for chat ${chatId}`);
         } catch (error) {
-          console.error("Failed to create new chat:", error);
-          toast.error("Failed to create chat", { id: toastId });
+          console.error("Failed to save AI message:", error);
+          // Optionally show toast error
+        }
+      }
+    },
+  });
+
+  // Custom submit handler
+  const customHandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const userPrompt = input.trim();
+
+    if (userPrompt) {
+      if (!chatId) {
+        // --- New Chat Flow ---
+        const clientChatId = uuidv4(); // Generate UUID on client
+        console.log(`Generated client-side chat ID: ${clientChatId}`);
+        const toastId = toast.loading("Creating new chat...");
+
+        try {
+          // 1. Call and await the initialization action
+          const { initializeChat } = await import(
+            "@/app/dashboard/chatActions"
+          );
+          await initializeChat(
+            clientChatId,
+            userPrompt,
+            selectedModelId ?? undefined
+          );
+          console.log(`Chat ${clientChatId} initialized successfully.`);
+
+          // 2. Refresh server data (for sidebar)
+          router.refresh();
+
+          // 3. Navigate to the new chat page
+          router.push(`/dashboard/chat/${clientChatId}`); // No query param needed
+
+          // 4. Clear input and show success
+          handleInputChange({ target: { value: "" } } as any); // Reset input field
+          toast.success("Chat created successfully", { id: toastId });
+        } catch (error) {
+          console.error("Failed to initialize new chat:", error);
+          toast.error(`Failed to create chat: ${(error as Error).message}`, {
+            id: toastId,
+          });
+          // Optionally remove the locally appended message if init failed
+          // This requires managing message IDs more carefully if needed
         }
       } else {
-        // Already on a chat page, save the message and use the normal submit flow
-        await saveUserMessage(chatId, input.trim()); // Use the updated saveUserMessage
-        handleSubmit(e); // Let useChat handle the API call
+        // --- Existing Chat Flow ---
+        // 1. Save user message to DB (async, don't wait)
+        saveUserMessage(chatId, userPrompt).catch((err) =>
+          console.error("Background user message save failed:", err)
+        );
+
+        // 2. Let useChat handle appending locally and sending API request
+        handleSubmit(e);
       }
     } else {
-      // Empty input, use default handler (which does nothing if input is empty)
+      // Empty input, use default handler (which does nothing)
       handleSubmit(e);
     }
   };
@@ -229,56 +236,51 @@ export function ChatInterface({
         setTimeout(scrollToBottom, 0);
       }
     }
-  }, [messages, status]);
+  }, [messages, status]); // Keep dependencies minimal
 
-  // Effect to auto-trigger AI response for the first message in a new chat
+  // Removed the useEffect hook for Initial Chat Setup as it's no longer needed
+
+  // Effect to auto-trigger AI response for the first message
+  // This now relies on the messages loaded from the DB via initialMessages prop
   useEffect(() => {
-    // Only run this effect when:
-    // - We have a valid chatId (meaning we're on a chat page, not dashboard)
-    // - initialMessages contains at least one user message
-    // - initialMessages doesn't already have an AI response
-    // - We haven't already triggered a reload for this chat (NEW CONDITION)
+    // Only run if:
+    // - We have a chatId
+    // - There's exactly one message loaded initially, and it's from the user
+    // - We haven't already triggered for this chat
     const shouldTriggerAIResponse =
       chatId &&
-      initialMessages &&
-      initialMessages.length > 0 &&
-      initialMessages.filter((m) => m.role === "assistant").length === 0 &&
-      !autoTriggeredChats.has(chatId); // Check if we've already triggered
+      initialMessages?.length === 1 && // Check initialMessages specifically
+      initialMessages[0].role === "user" &&
+      messages.length === 1 && // Ensure local state also has only 1 message (the user one)
+      !autoTriggeredChats.has(chatId);
 
     if (shouldTriggerAIResponse) {
       console.log(
-        `[ChatInterface Effect] Auto-triggering AI response for first message in chat ${chatId}`
+        `[ChatInterface AI Trigger Effect] Auto-triggering AI response for first message in chat ${chatId}`
       );
 
-      // Check if the AI is ready (status should be 'ready')
-      // Only reload if the status is 'ready' to avoid duplicate requests
       if (status === "ready") {
-        // Mark this chat as having been triggered BEFORE calling reload
-        setAutoTriggeredChats((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(chatId); // Add the current chatId to the set
-          return newSet;
-        });
-        // Use the useChat hook's reload method, ensuring it uses the correct model
+        setAutoTriggeredChats((prev) => new Set(prev).add(chatId));
+        console.log(`Calling reload() for chat ${chatId}`);
+        // Pass body directly to reload
         reload({
-          body: {
-            model: selectedModel, // Pass the current selected model slug
-          },
+          body: { model: selectedModel }, // Pass current model
         });
       } else {
         console.log(
-          `[ChatInterface Effect] AI status is '${status}', skipping auto-trigger.`
+          `[ChatInterface AI Trigger Effect] AI status is '${status}', skipping auto-trigger.`
         );
       }
     }
-    // Ensure autoTriggeredChats and selectedModel are included
+    // Dependencies: chatId, initialMessages, messages, autoTriggeredChats, reload, status, selectedModel
   }, [
     chatId,
-    initialMessages,
+    initialMessages, // Add initialMessages dependency
+    messages,
     autoTriggeredChats,
     reload,
     status,
-    selectedModel, // Add selectedModel dependency
+    selectedModel,
   ]);
 
   return (
@@ -342,46 +344,59 @@ export function ChatInterface({
               <p>Start chatting by typing a message below.</p>
             </div>
           )}
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex items-start gap-3 ${
-                m.role === "user" ? "justify-end" : ""
-              }`}
-            >
-              {m.role !== "user" && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>
-                    <FaRobot />
-                  </AvatarFallback>
-                </Avatar>
-              )}
+          {messages.map(
+            (
+              m,
+              index // Add index here
+            ) => (
               <div
-                className={`rounded-lg p-3 max-w-[95%] ${
-                  m.role === "user"
-                    ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
-                    : "prose prose-sm dark:prose-invert"
+                key={m.id}
+                className={`flex items-start gap-3 ${
+                  m.role === "user" ? "justify-end" : ""
                 }`}
               >
-                {m.role === "user" ? (
-                  <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                ) : (
-                  <AIMessage content={m.content} />
+                {m.role !== "user" && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>
+                      <FaRobot />
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+                <div
+                  className={`rounded-lg p-3 max-w-[95%] ${
+                    m.role === "user"
+                      ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
+                      : "prose prose-sm dark:prose-invert"
+                  }`}
+                >
+                  {m.role === "user" ? (
+                    <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                  ) : (
+                    // Pass required props to AIMessage
+                    <AIMessage
+                      message={m}
+                      messageIndex={index}
+                      messages={messages}
+                      availableModels={availableModels}
+                      append={append}
+                      chatId={chatId} // Pass string UUID
+                    />
+                  )}
+                </div>
+                {m.role === "user" && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>
+                      <FaUser />
+                    </AvatarFallback>
+                  </Avatar>
                 )}
               </div>
-              {m.role === "user" && (
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>
-                    <FaUser />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-            </div>
-          ))}
+            )
+          )}
           {status === "streaming" && (
             <div className="flex items-center gap-3">
-              <div className="rounded-lg p-3 bg-muted animate-pulse">
-                <p className="text-sm">...</p>
+              <div className="rounded-lg w-30 h-2">
+                <TypingIndicator />
               </div>
             </div>
           )}
@@ -419,13 +434,21 @@ export function ChatInterface({
             rows={1}
             disabled={status === "streaming"}
           />
-          <Button
-            type="submit"
-            disabled={status === "streaming" || !input.trim()}
-          >
-            <FaPaperPlane className="h-4 w-4" />
-            <span className="sr-only">Send</span>
-          </Button>
+          {status === "streaming" ? (
+            <Button
+              type="button"
+              onClick={stop}
+              variant="destructive" // Optional: Use a different variant for stop
+            >
+              <Square className="h-4 w-4" />
+              <span className="sr-only">Stop</span>
+            </Button>
+          ) : (
+            <Button type="submit" disabled={!input.trim()}>
+              <FaPaperPlane className="h-4 w-4" />
+              <span className="sr-only">Send</span>
+            </Button>
+          )}
         </form>
       </footer>
     </div>

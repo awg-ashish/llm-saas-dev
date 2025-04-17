@@ -14,9 +14,9 @@ export interface Folder {
 }
 
 export interface Chat {
-  id: number;
+  id: string; // Changed to string for UUID
   user_id: string | null;
-  folder_id: number | null;
+  folder_id: number | null; // Folder ID remains number
   title: string;
   model_id: number | null;
   is_comparison: boolean | null;
@@ -27,8 +27,8 @@ export interface Chat {
 }
 
 export interface ChatMessage {
-  id: number;
-  chat_id: number | null;
+  id: number; // Message ID can remain number (auto-increment)
+  chat_id: string | null; // Changed to string for UUID
   model_id: number | null;
   user_id: string | null;
   role: string;

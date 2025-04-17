@@ -22,16 +22,18 @@ export interface ChatFolder {
 }
 
 export interface ChatSummary {
-  id: number;
+  id: string; // Changed to string for UUID
   title: string;
-  folder_id: number | null;
+  folder_id: number | null; // Folder ID remains number
 }
 
 export async function createChat(
   title: string,
   folderId?: number,
-  modelId?: number | null // Changed parameter from modelSlug to modelId
-): Promise<{ id: number }> {
+  modelId?: number | null, // Changed parameter from modelSlug to modelId
+  chatId?: string // Allow passing pre-generated UUID
+): Promise<{ id: string }> {
+  // Return string ID
   const supabase = await createClient();
 
   const {
@@ -47,12 +49,13 @@ export async function createChat(
   const { data, error } = await supabase
     .from("chats")
     .insert({
+      id: chatId, // Insert the provided UUID if available
       user_id: user.id,
       title: title || "New Chat", // Default title if none provided
       folder_id: folderId,
       model_id: modelId, // Use the passed modelId here
     })
-    .select("id")
+    .select("id") // Select the ID (should be the UUID)
     .single();
 
   if (error) {
@@ -65,7 +68,81 @@ export async function createChat(
   }
 
   console.log(`Chat created with ID: ${data.id}`);
-  return { id: data.id };
+  // Ensure the returned ID is treated as a string
+  // Ensure the returned ID is treated as a string
+  return { id: data.id as string };
+}
+
+/**
+ * Initializes a new chat by upserting chat details and saving the first message.
+ * Also triggers title generation.
+ * This function handles the creation logic when using client-generated UUIDs.
+ *
+ * @param chatId - The client-generated UUID for the chat
+ * @param initialPrompt - The first user message content
+ * @param modelId - Optional model ID used for the chat
+ */
+export async function initializeChat(
+  chatId: string, // UUID
+  initialPrompt: string,
+  modelId?: number
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    console.error("User not authenticated for chat initialization:", userError);
+    // Throw an error because this is a critical step for a new chat
+    throw new Error("User not authenticated");
+  }
+
+  try {
+    // 1. Upsert chat details (create if not exists, update if somehow exists)
+    // Note: We might need a dedicated upsertChatPersistence function
+    // For now, let's assume insert works because the UUID should be unique
+    const { error: chatUpsertError } = await supabase.from("chats").upsert(
+      {
+        id: chatId, // Use the client-generated UUID
+        user_id: user.id,
+        title: "New Chat", // Default title, will be updated by generateChatTitle
+        model_id: modelId,
+        // folder_id: undefined, // Explicitly undefined or null if needed
+      },
+      { onConflict: "id" } // Specify the conflict column
+    );
+
+    if (chatUpsertError) {
+      console.error("Error upserting chat:", chatUpsertError);
+      throw new Error(`Failed to upsert chat: ${chatUpsertError.message}`);
+    }
+    console.log(`Chat upserted successfully with ID: ${chatId}`);
+
+    // 2. Save the initial user message
+    // Use saveMessage directly as it handles insert + timestamp update
+    await saveMessage(
+      chatId,
+      {
+        role: "user",
+        content: initialPrompt,
+        createdAt: new Date(), // Use current time for the first message
+      },
+      undefined // Model ID not typically associated with user message save
+    );
+    console.log(`Initial user message saved for chat ${chatId}`);
+
+    // 3. Trigger title generation asynchronously (fire and forget)
+    // Ensure generateChatTitle also accepts string chatId
+    generateChatTitle(chatId, initialPrompt).catch((err) =>
+      console.error("Background title generation failed:", err)
+    );
+  } catch (error) {
+    console.error(`Error initializing chat ${chatId}:`, error);
+    // Re-throw the error so the client knows initialization failed
+    throw new Error(`Failed to initialize chat: ${(error as Error).message}`);
+  }
 }
 
 // Placeholder - Implement based on how sidebar-chat.tsx needs the data
@@ -101,17 +178,21 @@ export async function loadChatsAndFolders(
   type DbChat = { id: number; title: string; folder_id: number | null };
 
   // Structure the data (this is a basic example, adjust as needed)
+  // Convert chat.id to string when creating ChatSummary objects
+  const allChats: ChatSummary[] = (chats as DbChat[]).map((chat) => ({
+    ...chat,
+    id: chat.id.toString(), // Convert number ID to string
+  }));
+
   const structuredData: ChatFolder[] = (folders as DbFolder[]).map(
     (folder) => ({
       ...folder,
-      chats: (chats as DbChat[]).filter((chat) => chat.folder_id === folder.id),
+      chats: allChats.filter((chat) => chat.folder_id === folder.id),
     })
   );
 
   // Add chats without a folder
-  const chatsWithoutFolder = (chats as DbChat[]).filter(
-    (chat) => chat.folder_id === null
-  );
+  const chatsWithoutFolder = allChats.filter((chat) => chat.folder_id === null);
   if (chatsWithoutFolder.length > 0) {
     structuredData.push({
       id: 0, // Or some other indicator for 'unfiled'
@@ -124,7 +205,8 @@ export async function loadChatsAndFolders(
   return structuredData;
 }
 
-export async function loadChatMessages(chatId: number): Promise<Message[]> {
+export async function loadChatMessages(chatId: string): Promise<Message[]> {
+  // Changed chatId to string
   const supabase = await createClient();
 
   const {
@@ -183,7 +265,7 @@ export async function loadChatMessages(chatId: number): Promise<Message[]> {
  * @param modelId - Optional model ID
  */
 export async function appendMessage(
-  chatId: number,
+  chatId: string, // Changed to string
   message: Message,
   modelId?: number
 ): Promise<void> {
@@ -225,7 +307,7 @@ export async function appendMessage(
  * @param modelId - Optional model ID
  */
 export async function saveMessage(
-  chatId: number,
+  chatId: string, // Changed to string
   message: {
     role: string;
     content: string;
@@ -283,7 +365,7 @@ export async function saveMessage(
  * @deprecated Use saveMessage instead for a simpler approach
  */
 export async function saveConversation(
-  chatId: number,
+  chatId: string, // Changed to string
   messages: Message[],
   modelId?: number
 ): Promise<void> {
@@ -352,7 +434,7 @@ export async function saveConversation(
  * @deprecated Use saveConversation instead.
  */
 export async function saveChatMessages(
-  chatId: number,
+  chatId: string, // Changed to string
   userId: string,
   messages: Message[],
   modelId?: number // Optional modelId
@@ -449,7 +531,7 @@ export async function getModelIdBySlug(
  * @returns A promise that resolves when the chat is deleted
  */
 export async function deleteChat(
-  chatId: number
+  chatId: string // Changed to string
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient();
 
@@ -481,7 +563,7 @@ export async function deleteChat(
  * @returns A promise that resolves when the chat is moved
  */
 export async function moveChat(
-  chatId: number,
+  chatId: string, // Changed to string
   folderId: number | null
 ): Promise<void> {
   const supabase = await createClient();
@@ -527,7 +609,7 @@ export async function moveChat(
  * @returns A promise that resolves when the chat is renamed
  */
 export async function renameChat(
-  chatId: number,
+  chatId: string, // Changed to string
   newTitle: string
 ): Promise<void> {
   const supabase = await createClient();
@@ -675,7 +757,7 @@ export async function renameFolder(
  * @returns A promise that resolves when the operation is complete or fails
  */
 export async function generateChatTitle(
-  chatId: number,
+  chatId: string, // Changed to string
   userMessage: string
 ): Promise<void> {
   try {

@@ -11,15 +11,17 @@ interface ChatPageProps {
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
-  // Await the params object before destructuring to fix the "params should be awaited" error
+  // Await the params object before destructuring
   const resolvedParams = await Promise.resolve(params);
-  const chatId = resolvedParams.chatId;
-  const chatIdNum = parseInt(chatId, 10);
+  const chatId = resolvedParams.chatId; // chatId is now a string (UUID)
 
-  if (isNaN(chatIdNum)) {
-    console.error(`Invalid chatId param: ${chatId}`);
-    notFound(); // Or redirect to dashboard
+  // Validate if chatId looks like a UUID (basic check) - optional but recommended
+  // A more robust check could use a regex or a library
+  if (typeof chatId !== "string" || chatId.length < 32) {
+    console.error(`Invalid chatId format: ${chatId}`);
+    notFound();
   }
+  // Removed the parseInt and isNaN check
 
   const supabase = await createClient();
   const {
@@ -56,9 +58,9 @@ export default async function ChatPage({ params }: ChatPageProps) {
   // Fetch messages for the current chat
   let initialMessages: Message[] = [];
   try {
-    initialMessages = await loadChatMessages(chatIdNum);
+    initialMessages = await loadChatMessages(chatId); // Use string chatId
   } catch (error) {
-    console.error(`Failed to load messages for chat ${chatIdNum}:`, error);
+    console.error(`Failed to load messages for chat ${chatId}:`, error);
     // Decide how to handle: show error in chat? Allow chat to start empty?
     // For now, we'll let it proceed with empty messages.
   }
@@ -76,17 +78,17 @@ export default async function ChatPage({ params }: ChatPageProps) {
     const { data: chatData, error: chatError } = await supabase
       .from("chats")
       .select("model_id")
-      .eq("id", chatIdNum)
+      .eq("id", chatId) // Use string chatId
       .eq("user_id", user.id) // Ensure user owns the chat
       .single();
 
     if (chatError) {
-      console.error(`Failed to fetch chat data for ${chatIdNum}:`, chatError);
+      console.error(`Failed to fetch chat data for ${chatId}:`, chatError);
     } else {
       initialModelId = chatData?.model_id;
     }
   } catch (error) {
-    console.error(`Error fetching model for chat ${chatIdNum}:`, error);
+    console.error(`Error fetching model for chat ${chatId}:`, error);
   }
 
   // We need to pass chatId, initialMessages, availableModels, and initialModelId to ChatInterface,
@@ -108,7 +110,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
         initialFolders={initialSidebarData.folders}
         initialChats={initialSidebarData.chats}
         // Pass down chat-specific props and models
-        currentChatId={chatIdNum}
+        currentChatId={chatId} // Pass string chatId
         initialMessages={initialMessages}
         availableModels={modelsData.ok ? modelsData.models : []}
         initialModelId={initialModelId}

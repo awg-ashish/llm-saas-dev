@@ -26,7 +26,7 @@ interface AppSidebarProps {
   ) => Promise<Chat | { error: string }>;
 
   moveChat: (
-    chatId: number,
+    chatId: string, // Changed to string
     folderId: number | null
   ) => Promise<{ success: boolean; error?: string }>;
   renameFolder: (
@@ -37,10 +37,10 @@ interface AppSidebarProps {
     folderId: number
   ) => Promise<{ success: boolean; error?: string }>;
   renameChat: (
-    chatId: number,
+    chatId: string, // Changed to string
     newName: string
   ) => Promise<{ success: boolean; error?: string }>;
-  deleteChat: (chatId: number) => Promise<{ success: boolean; error?: string }>;
+  deleteChat: (chatId: string) => Promise<{ success: boolean; error?: string }>; // Changed to string
 }
 
 export function AppSidebar({ initialFolders, initialChats }: AppSidebarProps) {
