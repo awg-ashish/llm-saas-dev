@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react"; // Add useCallback
-import { useChat, Message, UseChatHelpers } from "@ai-sdk/react"; // Import Message type and UseChatHelpers
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useChat, Message } from "@ai-sdk/react"; // Import Message type and UseChatHelpers
 import { v4 as uuidv4 } from "uuid"; // Import uuid
 import { FaUser, FaRobot, FaPaperPlane } from "react-icons/fa";
 import { Square } from "lucide-react"; // Import Square icon for stop
@@ -30,7 +30,12 @@ import { AIMessage } from "./AIMessage"; // Import the new AIMessage component
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 // Import ModelData type
-import { ModelData } from "@/app/dashboard/actions"; // Adjust path if necessary
+import { ModelData } from "@/app/dashboard/actions";
+
+// Helper function to safely check if an object has a property
+function hasProperty(obj: unknown, prop: string): boolean {
+  return typeof obj === "object" && obj !== null && prop in obj;
+}
 import { TypingIndicator } from "@/components/ui/typing-indicator";
 
 interface ChatInterfaceProps {
@@ -53,6 +58,14 @@ export function ChatInterface({
   const router = useRouter();
   const { state: sidebarState } = useSidebar();
   const isSidebarOpen = sidebarState === "expanded";
+
+  // Track which message is currently streaming during regeneration
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
+    null
+  );
+
+  // Counter to trigger reloading AI messages when a new message is saved
+  const [messageReloadTrigger, setMessageReloadTrigger] = useState(0);
 
   // Determine the initial model slug based on initialModelId or the first available model
   const initialModelSlug = useMemo(() => {
@@ -120,8 +133,13 @@ export function ChatInterface({
     initialMessages: initialMessages,
     sendExtraMessageFields: true,
     onFinish: async (message) => {
+      // Clear the streaming message ID when the message is finished streaming
+      setStreamingMessageId(null);
+
       if (chatId && message.role === "assistant") {
-        const aiSaveToastId = toast.loading("Saving AI message...");
+        // Don't show the saving toast for a better UX
+        // const aiSaveToastId = toast.loading("Saving AI message...");
+
         try {
           const { saveMessage } = await import("@/app/dashboard/chatActions");
 
@@ -134,23 +152,25 @@ export function ChatInterface({
               "[onFinish] Checking annotations:",
               message.annotations
             );
-            const modelAnnotation = message.annotations.find(
-              (ann) =>
-                typeof ann === "object" && ann !== null && "modelId" in ann
+            // Find annotation with modelId
+            const modelAnnotation = message.annotations.find((ann) =>
+              hasProperty(ann, "modelId")
             );
-            if (
-              modelAnnotation &&
-              typeof (modelAnnotation as any).modelId !== "undefined"
-            ) {
-              const parsedId = parseInt((modelAnnotation as any).modelId, 10);
-              if (!isNaN(parsedId)) {
-                modelIdToSave = parsedId;
-                source = "annotation";
-              } else {
-                console.warn(
-                  "[onFinish] Found modelId in annotation, but failed to parse:",
-                  (modelAnnotation as any).modelId
-                );
+            if (modelAnnotation) {
+              // Use type assertion to access properties
+              const modelIdValue = (modelAnnotation as Record<string, unknown>)
+                .modelId;
+              if (typeof modelIdValue !== "undefined") {
+                const parsedId = parseInt(String(modelIdValue), 10);
+                if (!isNaN(parsedId)) {
+                  modelIdToSave = parsedId;
+                  source = "annotation";
+                } else {
+                  console.warn(
+                    "[onFinish] Found modelId in annotation, but failed to parse:",
+                    (modelAnnotation as Record<string, unknown>).modelId
+                  );
+                }
               }
             }
           }
@@ -188,22 +208,28 @@ export function ChatInterface({
             modelIdToSave // Pass the determined model ID (or undefined)
           );
 
-          toast.success(
-            `AI message saved successfully (Model ID: ${
-              modelIdToSave ?? "N/A"
-            })`,
-            { id: aiSaveToastId }
-          );
+          // Silent success - don't show a toast for better UX
+          // toast.success(
+          //   `AI message saved successfully (Model ID: ${
+          //     modelIdToSave ?? "N/A"
+          //   })`,
+          //   { id: aiSaveToastId }
+          // );
           console.log(
             `AI message saved for chat ${chatId} with model ID ${modelIdToSave} (Source: ${source})`
           );
+
+          // Increment the reload trigger to notify AIMessage components to reload
+          // Add a small delay to ensure the database has been updated
+          setTimeout(() => {
+            setMessageReloadTrigger((prev) => prev + 1);
+          }, 300); // 300ms delay
         } catch (error) {
           console.error("Failed to save AI message:", error);
           toast.error(
             `Failed to save AI message: ${
               error instanceof Error ? error.message : "Unknown error"
-            }`,
-            { id: aiSaveToastId } // Update the specific toast on error
+            }`
           );
           modelIdForReloadRef.current = null; // Ensure ref is cleared on error too
         }
@@ -214,12 +240,15 @@ export function ChatInterface({
   // Handler for regeneration requests from AIMessage
   // Moved after useChat hook to fix dependency error
   const handleReloadWithMessage = useCallback(
-    async (modelSlug: string, modelId: number | null) => {
+    async (modelSlug: string, modelId: number | null, messageId: string) => {
       console.log(
-        `[ChatInterface] Reload triggered with model: ${modelSlug} (ID: ${modelId})`
+        `[ChatInterface] Reload triggered with model: ${modelSlug} (ID: ${modelId}) for message: ${messageId}`
       );
       // Store the modelId for onFinish to use
       modelIdForReloadRef.current = modelId;
+
+      // Set the streaming message ID to track which message is being regenerated
+      setStreamingMessageId(messageId);
 
       // Show loading toast (optional)
       const reloadToastId = toast.loading(
@@ -245,6 +274,7 @@ export function ChatInterface({
           { id: reloadToastId }
         );
         modelIdForReloadRef.current = null; // Clear ref on error
+        setStreamingMessageId(null); // Reset streaming message ID on error
       }
     },
     [reload] // Add reload to dependency array
@@ -464,103 +494,135 @@ export function ChatInterface({
               <p>Start chatting by typing a message below.</p>
             </div>
           )}
-          {messages.map(
-            (
-              m,
-              index // Add index here
-            ) => {
-              // Extract modelName with priority for annotations (preferred) over deprecated data
-              let modelName: string | null = null;
-              let modelSlug: string | null = null;
+          {/* Group messages by user/assistant pairs */}
+          {(() => {
+            // Create a new array of message groups
+            const messageGroups: { user: Message; assistants: Message[] }[] =
+              [];
 
-              // First check for model info in annotations (recommended approach)
-              if (m.annotations && m.annotations.length > 0) {
-                const modelAnnotation = m.annotations.find(
-                  (ann) =>
-                    typeof ann === "object" &&
-                    ann !== null &&
-                    "modelName" in ann
+            // Group messages by user/assistant pairs
+            for (let i = 0; i < messages.length; i++) {
+              const message = messages[i];
+
+              if (message.role === "user") {
+                // Start a new group with this user message
+                messageGroups.push({
+                  user: message,
+                  assistants: [],
+                });
+              } else if (
+                message.role === "assistant" &&
+                messageGroups.length > 0
+              ) {
+                // Add this assistant message to the last group
+                messageGroups[messageGroups.length - 1].assistants.push(
+                  message
                 );
+              }
+            }
 
-                if (modelAnnotation) {
-                  const rawModelName = (
-                    modelAnnotation as { modelName: string | null }
-                  ).modelName;
+            // Render each group
+            return messageGroups.map((group, groupIndex) => {
+              // First render the user message
+              const userMessage = (
+                <div
+                  key={`user-${group.user.id}`}
+                  className="flex items-start gap-3 justify-end"
+                >
+                  <div className="rounded-lg p-3 max-w-[95%] bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
+                    <p className="text-sm whitespace-pre-wrap">
+                      {group.user.content}
+                    </p>
+                  </div>
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>
+                      <FaUser />
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+              );
 
-                  // Check if this is a slug format (contains colon) or just a model name
-                  if (rawModelName) {
-                    if (rawModelName.includes(":")) {
-                      modelName = extractModelFromSlug(rawModelName);
-                      modelSlug = rawModelName;
-                    } else {
-                      modelName = rawModelName;
+              // Then render the assistant message (if any)
+              let assistantMessage = null;
+              if (group.assistants.length > 0) {
+                // Use the most recent assistant message for display
+                const latestAssistant =
+                  group.assistants[group.assistants.length - 1];
+
+                // Extract modelName with priority for annotations
+                let modelName: string | null = null;
+
+                // Check for model info in annotations
+                if (
+                  latestAssistant.annotations &&
+                  latestAssistant.annotations.length > 0
+                ) {
+                  // Find annotation with modelName
+                  const modelAnnotation = latestAssistant.annotations.find(
+                    (ann) => hasProperty(ann, "modelName")
+                  );
+
+                  if (modelAnnotation) {
+                    // Use type assertion to access properties
+                    const rawModelName = (
+                      modelAnnotation as Record<string, unknown>
+                    ).modelName;
+
+                    // Check if this is a slug format (contains colon) or just a model name
+                    if (rawModelName && typeof rawModelName === "string") {
+                      if (rawModelName.includes(":")) {
+                        modelName = extractModelFromSlug(rawModelName);
+                      } else {
+                        modelName = rawModelName;
+                      }
                     }
-                    console.log(
-                      `Found model name in annotations: ${rawModelName}, extracted: ${modelName}`
-                    );
                   }
                 }
-              }
 
-              // Debug log for troubleshooting
-              if (m.role === "assistant") {
-                console.log(
-                  `Message ${index} model name: ${modelName || "unknown"}`
+                // Calculate the message index for the AIMessage component
+                const messageIndex = messages.findIndex(
+                  (m) => m.id === latestAssistant.id
                 );
-              }
 
-              return (
-                <div
-                  key={m.id}
-                  className={`flex items-start gap-3 ${
-                    m.role === "user" ? "justify-end" : ""
-                  }`}
-                >
-                  {m.role !== "user" && (
+                assistantMessage = (
+                  <div
+                    key={`assistant-${groupIndex}`}
+                    className="flex items-start gap-3"
+                  >
                     <Avatar className="h-8 w-8">
                       <AvatarFallback>
                         <FaRobot />
                       </AvatarFallback>
                     </Avatar>
-                  )}
-                  <div
-                    className={`rounded-lg p-3 max-w-[95%] ${
-                      m.role === "user"
-                        ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
-                        : "prose prose-sm dark:prose-invert"
-                    }`}
-                  >
-                    {m.role === "user" ? (
-                      <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                    ) : (
-                      // Pass required props to AIMessage, including modelName from data
+                    <div className="rounded-lg p-3 max-w-[95%] prose prose-sm dark:prose-invert">
                       <AIMessage
-                        message={m}
-                        messageIndex={index}
+                        message={latestAssistant}
+                        messageIndex={messageIndex}
                         messages={messages}
                         availableModels={availableModels}
-                        // append={append} // Remove append prop
-                        chatId={chatId} // Pass string UUID
-                        // Pass the extracted modelName
+                        chatId={chatId}
                         modelName={modelName}
-                        // Pass the new handler for reload
                         onRegenerate={handleReloadWithMessage}
-                        // Remove the old handler prop
-                        // onRegenerationStart={handleRegenerationStarted}
+                        isStreaming={
+                          status === "streaming" &&
+                          streamingMessageId === latestAssistant.id
+                        }
+                        reloadTrigger={messageReloadTrigger}
                       />
-                    )}
+                    </div>
                   </div>
-                  {m.role === "user" && (
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>
-                        <FaUser />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
+                );
+              }
+
+              // Return both messages
+              return (
+                <div key={`group-${groupIndex}`} className="space-y-4">
+                  {userMessage}
+                  {assistantMessage}
                 </div>
               );
-            }
-          )}
+            });
+          })()}
           {status === "streaming" && (
             <div className="flex items-center gap-3">
               <div className="rounded-lg w-30 h-2">

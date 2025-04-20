@@ -266,6 +266,114 @@ export async function loadChatMessages(chatId: string): Promise<Message[]> {
 }
 
 /**
+ * Loads all AI messages that are responses to a specific user message.
+ * This is used for the carousel navigation between regenerated AI responses.
+ *
+ * @param chatId - The ID of the chat
+ * @param userMessageId - The ID of the user message
+ * @returns A promise that resolves to an array of AI messages
+ */
+export async function loadAIMessagesForUserMessage(
+  chatId: string,
+  userMessageIndex: number
+): Promise<Message[]> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    console.error("User not authenticated for loading AI messages:", userError);
+    return [];
+  }
+
+  // First, get all messages to find the user message by index
+  const { data: allMessages, error: messagesError } = await supabase
+    .from("chat_messages")
+    .select("id, role")
+    .eq("chat_id", chatId)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true });
+
+  if (messagesError) {
+    console.error(`Error loading messages for chat ${chatId}:`, messagesError);
+    return [];
+  }
+
+  // Find all user message IDs
+  const userMessageIds = (allMessages || [])
+    .filter((msg) => msg.role === "user")
+    .map((msg) => msg.id);
+
+  // If the requested index is out of bounds, return empty array
+  if (userMessageIndex < 0 || userMessageIndex >= userMessageIds.length) {
+    console.error(`User message index ${userMessageIndex} out of bounds`);
+    return [];
+  }
+
+  const userMessageId = userMessageIds[userMessageIndex];
+
+  // Now get all AI messages that follow this user message but come before the next user message
+  const nextUserMessageId =
+    userMessageIndex + 1 < userMessageIds.length
+      ? userMessageIds[userMessageIndex + 1]
+      : null;
+
+  let query = supabase
+    .from("chat_messages")
+    .select("*, models(id, model_name, slug)")
+    .eq("chat_id", chatId)
+    .eq("user_id", user.id)
+    .eq("role", "assistant")
+    .gt("id", userMessageId)
+    .order("created_at", { ascending: true });
+
+  // If there's a next user message, only get AI messages before it
+  if (nextUserMessageId) {
+    query = query.lt("id", nextUserMessageId);
+  }
+
+  const { data: aiMessages, error: aiMessagesError } = await query;
+
+  if (aiMessagesError) {
+    console.error(
+      `Error loading AI messages for user message ${userMessageId}:`,
+      aiMessagesError
+    );
+    return [];
+  }
+
+  // Define type for Supabase message row
+  type DbMessage = {
+    id: number;
+    role: string;
+    content: string;
+    created_at: string;
+    model_id: number | null;
+    // Expect a single related object with model details
+    models: { id: number; model_name: string; slug: string } | null;
+  };
+
+  // Map Supabase rows to Vercel AI SDK Message type
+  const messages: Message[] = (aiMessages as DbMessage[]).map((msg) => ({
+    id: msg.id.toString(), // Vercel expects string IDs
+    role: "assistant" as const,
+    content: msg.content,
+    createdAt: new Date(msg.created_at),
+    // Include both modelName and modelSlug in data
+    data: {
+      modelId: msg.model_id,
+      modelName: msg.models?.model_name ?? null,
+      modelSlug: msg.models?.slug ?? null,
+    },
+  }));
+
+  return messages;
+}
+
+/**
  * Appends a message to a chat.
  *
  * @param chatId - The ID of the chat

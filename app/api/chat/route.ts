@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       model: string;
       messages: Message[];
       selectedModel: string;
-      selectedModelId: any;
+      selectedModelId: number | string;
     } = body;
     console.log(
       "[API/chat/route] Incoming body params:",

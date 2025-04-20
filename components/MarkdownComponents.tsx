@@ -52,6 +52,7 @@ const InternalCodeBlock: React.FC<InternalCodeBlockProps> = ({
       </div>
       <SyntaxHighlighter
         className="rounded-lg"
+        //eslint-disable-next-line @typescript-eslint/no-explicit-any
         style={vs as any}
         language={language}
         PreTag="div"
@@ -187,7 +188,6 @@ export const markdownComponents = {
   img: (props: React.ImgHTMLAttributes<HTMLImageElement>) => {
     if (!props.src) return null;
     // strip out unwanted keys so Next/Image can size itself
-    const { className, width, height, ...rest } = props;
     return (
       <Image
         className="my-4 rounded-lg"
@@ -197,7 +197,6 @@ export const markdownComponents = {
         height={0}
         sizes="100vw"
         style={{ width: "100%", height: "auto" }}
-        {...rest}
       />
     );
   },
