@@ -1,6 +1,6 @@
 // app/api/chat/lmstudio/route.ts
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { streamText } from "ai";
+import { streamText, createDataStreamResponse, type CoreMessage } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 
 // IMPORTANT: Set the runtime to edge
@@ -32,7 +32,13 @@ export async function POST(req: NextRequest) {
     const {
       messages,
       model: modelSlug, // e.g., "lmstudio:qwen2.5-coder-7b-instruct"
+      modelId, // Extract modelId from the request
       id: chatIdStr,
+    }: {
+      messages: CoreMessage[];
+      model: string;
+      modelId?: string | number; // Model ID for persistence
+      id?: string; // Chat ID for persistence
     } = await req.json();
 
     // Extract the actual model name to pass to the provider
@@ -56,38 +62,59 @@ export async function POST(req: NextRequest) {
       // Remove the onFinish callback - we'll handle persistence on the client
     });
 
-    // Consume the stream to ensure it runs to completion even if client disconnects
-    result.consumeStream();
+    // Use createDataStreamResponse to handle streaming data
+    return createDataStreamResponse({
+      async execute(dataStream) {
+        try {
+          // Write the model name and ID as message annotations *before* merging
+          // Cast to any to avoid TypeScript errors with JSONValue type
+          dataStream.writeMessageAnnotation({
+            modelName: modelName,
+            modelId: modelId, // Include modelId from the parsed request
+          } as any);
+          console.log(
+            "Wrote modelName and modelId annotations to LM Studio data stream:",
+            { modelName, modelId }
+          );
 
-    console.log("LM Studio stream created, beginning response generation");
+          console.log("LM Studio stream created, merging into data stream");
 
-    // Log the complete response
-    (async () => {
-      try {
-        let fullResponse = "";
-        for await (const textPart of result.textStream) {
-          fullResponse += textPart;
+          // Merge the text stream into the data stream
+          await result.mergeIntoDataStream(dataStream);
+
+          // Log final details after stream completion (optional)
+          const finalResult = await result;
+          console.log("LM Studio response details:", {
+            finishReason: finalResult.finishReason,
+            usage: finalResult.usage,
+          });
+        } catch (streamError) {
+          console.error(
+            "Error during LM Studio stream execution:",
+            streamError
+          );
+          // Write an error message using writeData
+          dataStream.writeData({
+            error:
+              streamError instanceof Error
+                ? streamError.message
+                : "Unknown stream error",
+          });
+        } finally {
+          // No explicit close needed
+          console.log("LM Studio execute function finished");
         }
-
-        console.log("LM Studio complete response length:", fullResponse.length);
-
-        const text = await result.text;
-        const finishReason = await result.finishReason;
-        const usage = await result.usage;
-
-        console.log("LM Studio response details:", {
-          finishReason,
-          usage,
-          textLength: text.length,
-        });
-      } catch (error) {
-        console.error("Error processing LM Studio response:", error);
-      }
-    })();
-
-    // Convert the response into a friendly text-stream
-    return result.toDataStreamResponse();
+      },
+      // Optional: Add top-level onError for createDataStreamResponse itself
+      onError(error: unknown): string {
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        console.error("createDataStreamResponse error (LM Studio):", message);
+        return JSON.stringify({ error: `Stream creation failed: ${message}` });
+      },
+    });
   } catch (error: string | unknown) {
+    // Handle errors before streaming starts
     const message =
       error instanceof Error // true for real Error objects
         ? error.message

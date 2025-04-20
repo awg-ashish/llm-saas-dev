@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, createDataStreamResponse } from "ai";
 import { openai } from "@ai-sdk/openai";
 import type { CoreMessage } from "ai";
 
@@ -10,10 +10,12 @@ export async function POST(req: Request) {
     const {
       messages,
       model: modelSlug,
+      modelId: modelId,
       id: chatIdStr,
     }: {
       messages: CoreMessage[];
       model: string;
+      modelId: string; // Model ID for persistence
       id?: string; // Chat ID for persistence
     } = await req.json();
 
@@ -21,7 +23,7 @@ export async function POST(req: Request) {
     const modelName = modelSlug.replace("openai:", "");
 
     // Request Data Logging
-    console.log("OpenAI API Request:", {
+    console.log("OpenAI API Request with extended info:", {
       messages: messages.length,
       model: modelName,
       chatId: chatIdStr,
@@ -31,48 +33,61 @@ export async function POST(req: Request) {
       throw new Error("Missing OPENAI_API_KEY environment variable");
     }
 
-    // Create a result with the streamText function
-    const result = streamText({
-      model: openai(modelName),
-      messages,
-      onError({ error }) {
-        console.error("OpenAI Stream error:", error);
-      },
-      // Remove the onFinish callback - we'll handle persistence on the client
-    });
+    // Use createDataStreamResponse to handle streaming data
+    return createDataStreamResponse({
+      execute: (dataStream) => {
+        try {
+          // Create a result with the streamText function
+          const result = streamText({
+            model: openai(modelName),
+            messages,
+            onError({ error }) {
+              console.error("OpenAI Stream error:", error);
+              // Optionally write error info to dataStream if needed
+            },
+            onFinish() {
+              // message annotation:
+              dataStream.writeMessageAnnotation({
+                // Write the model name and ID as message annotations
+                modelName: modelName,
+                modelId: modelId,
+              });
 
-    // Consume the stream to ensure it runs to completion even if client disconnects
-    result.consumeStream();
+              // call annotation:
+              dataStream.writeData("call completed");
+            },
+          });
 
-    console.log("OpenAI stream created, beginning response generation");
+          console.log("OpenAI stream created, merging into data stream");
 
-    // Log the complete response
-    (async () => {
-      try {
-        let fullResponse = "";
-        for await (const textPart of result.textStream) {
-          fullResponse += textPart;
+          // Merge the text stream into the data stream
+          result.mergeIntoDataStream(dataStream);
+        } catch (streamError) {
+          console.error("Error during OpenAI stream execution:", streamError);
+          // Write an error message using writeData (or writeMessageAnnotation if preferred)
+          dataStream.writeData({
+            // Using writeData for general errors
+            error:
+              streamError instanceof Error
+                ? streamError.message
+                : "Unknown stream error",
+          });
+        } finally {
+          // No explicit close needed, mergeIntoDataStream handles it
+          console.log("OpenAI execute function finished");
         }
-
-        console.log("OpenAI complete response length:", fullResponse.length);
-
-        const text = await result.text;
-        const finishReason = await result.finishReason;
-        const usage = await result.usage;
-
-        console.log("OpenAI response details:", {
-          finishReason,
-          usage,
-          textLength: text.length,
-        });
-      } catch (error) {
-        console.error("Error processing OpenAI response:", error);
-      }
-    })();
-
-    console.log("Sending OpenAI stream response to client");
-    return result.toDataStreamResponse();
+      },
+      // Optional: Add top-level onError for createDataStreamResponse itself
+      onError(error: unknown): string {
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        console.error("createDataStreamResponse error:", message);
+        // Return an error message string
+        return JSON.stringify({ error: `Stream creation failed: ${message}` });
+      }, // Removed extra comma causing syntax error
+    });
   } catch (error: unknown) {
+    // Handle errors before streaming starts (e.g., JSON parsing, env var check)
     const errorMessage =
       error instanceof Error
         ? error.message

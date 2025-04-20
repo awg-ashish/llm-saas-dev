@@ -26,6 +26,7 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.3",
+    "@types/katex": "^0.16.7",
     "@types/uuid": "^10.0.0",
     "ai": "^4.2.5",
     "and": "^0.0.3",

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { extractModelFromSlug } from "@/utils/extract-model-name"; // Import extractModelFromSlug
 import {
   Select,
   SelectContent,
@@ -26,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Settings, LogOut } from "lucide-react";
 import { AIMessage } from "./AIMessage"; // Import the new AIMessage component
-import { useRouter, useSearchParams } from "next/navigation"; // Import useSearchParams
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 // Import ModelData type
 import { ModelData } from "@/app/dashboard/actions"; // Adjust path if necessary
@@ -37,36 +38,21 @@ interface ChatInterfaceProps {
   onSignOut: () => Promise<void>;
   chatId?: string; // Changed to string for UUID
   initialMessages?: Message[];
-  // Add models props
   availableModels: ModelData[];
   initialModelId?: number; // Keep as number, relates to models table
 }
-
-// Remove the hardcoded models array
-// const models = [
-//   { id: "openai:gpt-4o", name: "OpenAI GPT-4o" },
-//   { id: "openai:gpt-4o-mini", name: "OpenAI GPT-4o mini" },
-//   { id: "openai:gpt-3.5-turbo", name: "OpenAI GPT-3.5 Turbo" },
-//   { id: "google:gemini-pro", name: "Google Gemini Pro" },
-// ];
-// Cleaned up the leftover array definition above
 
 export function ChatInterface({
   userName,
   onSignOut,
   chatId,
   initialMessages,
-  // Destructure new props
   availableModels,
   initialModelId,
 }: ChatInterfaceProps) {
   const router = useRouter();
-  const searchParams = useSearchParams(); // Get search params
   const { state: sidebarState } = useSidebar();
   const isSidebarOpen = sidebarState === "expanded";
-
-  // Use availableModels from props, no need for useMemo filtering here anymore
-  // const availableModels = useMemo(() => { ... }, []);
 
   // Determine the initial model slug based on initialModelId or the first available model
   const initialModelSlug = useMemo(() => {
@@ -79,28 +65,27 @@ export function ChatInterface({
     return availableModels[0]?.slug || "";
   }, [availableModels, initialModelId]);
 
-  const [selectedModel, setSelectedModel] = useState(initialModelSlug);
+  const [selectedModel, setselectedModel] = useState(initialModelSlug);
   // Determine the initial model ID based on the initial slug
-  const [selectedModelId, setSelectedModelId] = useState<number | null>(() => {
+  const [selectedModelId, setselectedModelId] = useState<number | null>(() => {
     const foundModel = availableModels.find(
       (model) => model.slug === initialModelSlug
     );
     return foundModel?.id || availableModels[0]?.id || null;
   });
-  // State to track chats for which the initial AI response has been triggered
-  // Use string for chatId
-  const [autoTriggeredChats, setAutoTriggeredChats] = useState<Set<string>>(
-    new Set()
-  );
-  // State to track if initial chat setup is done
-  const [initialSetupDone, setInitialSetupDone] = useState(false);
+
+  // Ref to store the model ID intended for the current reload operation
+  const modelIdForReloadRef = useRef<number | null>(null);
 
   // Update the model ID when the slug changes
   const handleModelChange = (value: string) => {
-    setSelectedModel(value);
+    setselectedModel(value);
     // Find and set the corresponding model ID
     const foundModel = availableModels.find((model) => model.slug === value);
-    setSelectedModelId(foundModel?.id || null);
+    setselectedModelId(foundModel?.id || null);
+    console.log(
+      `[ChatInterface] Model changed to: ${value}, ID: ${foundModel?.id}`
+    );
   };
 
   // Save the user message for persistence - chatIdToUse is now string
@@ -125,25 +110,74 @@ export function ChatInterface({
     handleInputChange,
     handleSubmit,
     status,
-    reload,
     stop, // Import stop
-    append, // Import append
+    reload, // Destructure reload
+    // status, // REMOVED DUPLICATE
   } = useChat({
     // Use a single consistent API endpoint
     api: "/api/chat",
-    // Pass the selected model in the body
-    body: {
-      model: selectedModel,
-    },
-    id: chatId, // Pass string UUID directly
+    id: chatId, // Pass string UUID directly (useChat uses this for identifying the chat instance)
     initialMessages: initialMessages,
-    sendExtraMessageFields: true, // Keep this if needed by API
+    sendExtraMessageFields: true,
     onFinish: async (message) => {
-      console.log("AI response finished for chat:", chatId);
       if (chatId && message.role === "assistant") {
-        // Ensure it's an assistant message
+        const aiSaveToastId = toast.loading("Saving AI message...");
         try {
           const { saveMessage } = await import("@/app/dashboard/chatActions");
+
+          let modelIdToSave: number | undefined = undefined;
+          let source = "unknown";
+
+          // 1. Prioritize modelId from annotations
+          if (message.annotations) {
+            console.log(
+              "[onFinish] Checking annotations:",
+              message.annotations
+            );
+            const modelAnnotation = message.annotations.find(
+              (ann) =>
+                typeof ann === "object" && ann !== null && "modelId" in ann
+            );
+            if (
+              modelAnnotation &&
+              typeof (modelAnnotation as any).modelId !== "undefined"
+            ) {
+              const parsedId = parseInt((modelAnnotation as any).modelId, 10);
+              if (!isNaN(parsedId)) {
+                modelIdToSave = parsedId;
+                source = "annotation";
+              } else {
+                console.warn(
+                  "[onFinish] Found modelId in annotation, but failed to parse:",
+                  (modelAnnotation as any).modelId
+                );
+              }
+            }
+          }
+
+          // 2. Fallback to reload ref (for manual regenerations)
+          if (
+            modelIdToSave === undefined &&
+            modelIdForReloadRef.current !== null
+          ) {
+            modelIdToSave = modelIdForReloadRef.current;
+            source = "reloadRef";
+            modelIdForReloadRef.current = null; // Reset the ref after use
+          }
+
+          // 3. Fallback to current selectedModelId state (less reliable, but better than nothing)
+          if (modelIdToSave === undefined && selectedModelId !== null) {
+            modelIdToSave = selectedModelId;
+            source = "componentState";
+            console.warn(
+              "[onFinish] Using component state selectedModelId as fallback."
+            );
+          }
+
+          console.log(
+            `[onFinish] Determined modelIdToSave: ${modelIdToSave} (Source: ${source})`
+          );
+
           await saveMessage(
             chatId, // Pass string UUID
             {
@@ -151,16 +185,70 @@ export function ChatInterface({
               content: message.content,
               createdAt: new Date(),
             },
-            selectedModelId ?? undefined // Pass model ID for AI message
+            modelIdToSave // Pass the determined model ID (or undefined)
           );
-          console.log(`AI message saved for chat ${chatId}`);
+
+          toast.success(
+            `AI message saved successfully (Model ID: ${
+              modelIdToSave ?? "N/A"
+            })`,
+            { id: aiSaveToastId }
+          );
+          console.log(
+            `AI message saved for chat ${chatId} with model ID ${modelIdToSave} (Source: ${source})`
+          );
         } catch (error) {
           console.error("Failed to save AI message:", error);
-          // Optionally show toast error
+          toast.error(
+            `Failed to save AI message: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+            { id: aiSaveToastId } // Update the specific toast on error
+          );
+          modelIdForReloadRef.current = null; // Ensure ref is cleared on error too
         }
       }
     },
   });
+
+  // Handler for regeneration requests from AIMessage
+  // Moved after useChat hook to fix dependency error
+  const handleReloadWithMessage = useCallback(
+    async (modelSlug: string, modelId: number | null) => {
+      console.log(
+        `[ChatInterface] Reload triggered with model: ${modelSlug} (ID: ${modelId})`
+      );
+      // Store the modelId for onFinish to use
+      modelIdForReloadRef.current = modelId;
+
+      // Show loading toast (optional)
+      const reloadToastId = toast.loading(
+        `Regenerating with ${extractModelFromSlug(modelSlug)}...`
+      );
+
+      try {
+        // Call reload, passing the selected model slug and ID in the body
+        await reload({
+          body: {
+            model: modelSlug, // Send the slug for API routing
+            modelId: modelId, // Send the ID for potential use/logging
+          },
+        });
+        // Toast success will be handled by onFinish saving
+        toast.dismiss(reloadToastId); // Dismiss loading if reload itself finishes (though onFinish is main indicator)
+      } catch (error) {
+        console.error("Reload failed:", error);
+        toast.error(
+          `Regeneration failed: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+          { id: reloadToastId }
+        );
+        modelIdForReloadRef.current = null; // Clear ref on error
+      }
+    },
+    [reload] // Add reload to dependency array
+  );
 
   // Custom submit handler
   const customHandleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -193,7 +281,9 @@ export function ChatInterface({
           router.push(`/dashboard/chat/${clientChatId}`); // No query param needed
 
           // 4. Clear input and show success
-          handleInputChange({ target: { value: "" } } as any); // Reset input field
+          handleInputChange({
+            target: { value: "" },
+          } as React.ChangeEvent<HTMLTextAreaElement>); // Reset input field
           toast.success("Chat created successfully", { id: toastId });
         } catch (error) {
           console.error("Failed to initialize new chat:", error);
@@ -211,7 +301,12 @@ export function ChatInterface({
         );
 
         // 2. Let useChat handle appending locally and sending API request
-        handleSubmit(e);
+        handleSubmit(e, {
+          body: {
+            model: selectedModel,
+            modelId: selectedModelId,
+          },
+        });
       }
     } else {
       // Empty input, use default handler (which does nothing)
@@ -238,10 +333,10 @@ export function ChatInterface({
     }
   }, [messages, status]); // Keep dependencies minimal
 
-  // Removed the useEffect hook for Initial Chat Setup as it's no longer needed
+  // Ref to track chats that have already had an AI response triggered
+  const autoTriggeredChats = useRef(new Set<string>());
 
-  // Effect to auto-trigger AI response for the first message
-  // This now relies on the messages loaded from the DB via initialMessages prop
+  // Effect to trigger initial AI response on new chat load
   useEffect(() => {
     // Only run if:
     // - We have a chatId
@@ -252,35 +347,60 @@ export function ChatInterface({
       initialMessages?.length === 1 && // Check initialMessages specifically
       initialMessages[0].role === "user" &&
       messages.length === 1 && // Ensure local state also has only 1 message (the user one)
-      !autoTriggeredChats.has(chatId);
+      !autoTriggeredChats.current.has(chatId) &&
+      status === "ready"; // Only trigger if status is ready
 
     if (shouldTriggerAIResponse) {
       console.log(
-        `[ChatInterface AI Trigger Effect] Auto-triggering AI response for first message in chat ${chatId}`
+        `[ChatInterface] Auto-triggering AI response for first message in chat ${chatId}`
       );
 
-      if (status === "ready") {
-        setAutoTriggeredChats((prev) => new Set(prev).add(chatId));
-        console.log(`Calling reload() for chat ${chatId}`);
-        // Pass body directly to reload
-        reload({
-          body: { model: selectedModel }, // Pass current model
-        });
-      } else {
-        console.log(
-          `[ChatInterface AI Trigger Effect] AI status is '${status}', skipping auto-trigger.`
-        );
-      }
+      // Mark this chat as triggered
+      autoTriggeredChats.current.add(chatId);
+
+      // Ensure we have a valid model to use
+      const modelToUse =
+        selectedModel || availableModels[0]?.slug || "openai:gpt-4o-mini";
+      const modelIdToUse = selectedModelId || availableModels[0]?.id || null;
+
+      console.log(`[ChatInterface] Calling reload() with model:`, {
+        modelSlug: modelToUse,
+        modelId: modelIdToUse,
+        availableModelsLength: availableModels.length,
+      });
+
+      // Use reload instead of handleSubmit
+      reload({
+        body: {
+          model: modelToUse,
+          modelId: modelIdToUse,
+        },
+      });
+      console.log("[ChatInterface] Initial AI response triggered via reload()");
+    } else if (
+      chatId &&
+      initialMessages?.length === 1 &&
+      messages.length === 1
+    ) {
+      // Log why we're not triggering for debugging
+      console.log("[ChatInterface] Not triggering initial AI response:", {
+        chatId,
+        initialMessagesLength: initialMessages?.length,
+        messagesLength: messages.length,
+        firstMessageRole: initialMessages[0]?.role,
+        status,
+        alreadyTriggered: autoTriggeredChats.current.has(chatId),
+      });
     }
-    // Dependencies: chatId, initialMessages, messages, autoTriggeredChats, reload, status, selectedModel
   }, [
     chatId,
-    initialMessages, // Add initialMessages dependency
+    initialMessages,
     messages,
-    autoTriggeredChats,
-    reload,
     status,
+    reload,
     selectedModel,
+    selectedModelId,
+    availableModels,
   ]);
 
   return (
@@ -348,50 +468,98 @@ export function ChatInterface({
             (
               m,
               index // Add index here
-            ) => (
-              <div
-                key={m.id}
-                className={`flex items-start gap-3 ${
-                  m.role === "user" ? "justify-end" : ""
-                }`}
-              >
-                {m.role !== "user" && (
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>
-                      <FaRobot />
-                    </AvatarFallback>
-                  </Avatar>
-                )}
+            ) => {
+              // Extract modelName with priority for annotations (preferred) over deprecated data
+              let modelName: string | null = null;
+              let modelSlug: string | null = null;
+
+              // First check for model info in annotations (recommended approach)
+              if (m.annotations && m.annotations.length > 0) {
+                const modelAnnotation = m.annotations.find(
+                  (ann) =>
+                    typeof ann === "object" &&
+                    ann !== null &&
+                    "modelName" in ann
+                );
+
+                if (modelAnnotation) {
+                  const rawModelName = (
+                    modelAnnotation as { modelName: string | null }
+                  ).modelName;
+
+                  // Check if this is a slug format (contains colon) or just a model name
+                  if (rawModelName) {
+                    if (rawModelName.includes(":")) {
+                      modelName = extractModelFromSlug(rawModelName);
+                      modelSlug = rawModelName;
+                    } else {
+                      modelName = rawModelName;
+                    }
+                    console.log(
+                      `Found model name in annotations: ${rawModelName}, extracted: ${modelName}`
+                    );
+                  }
+                }
+              }
+
+              // Debug log for troubleshooting
+              if (m.role === "assistant") {
+                console.log(
+                  `Message ${index} model name: ${modelName || "unknown"}`
+                );
+              }
+
+              return (
                 <div
-                  className={`rounded-lg p-3 max-w-[95%] ${
-                    m.role === "user"
-                      ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
-                      : "prose prose-sm dark:prose-invert"
+                  key={m.id}
+                  className={`flex items-start gap-3 ${
+                    m.role === "user" ? "justify-end" : ""
                   }`}
                 >
-                  {m.role === "user" ? (
-                    <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                  ) : (
-                    // Pass required props to AIMessage
-                    <AIMessage
-                      message={m}
-                      messageIndex={index}
-                      messages={messages}
-                      availableModels={availableModels}
-                      append={append}
-                      chatId={chatId} // Pass string UUID
-                    />
+                  {m.role !== "user" && (
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        <FaRobot />
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  <div
+                    className={`rounded-lg p-3 max-w-[95%] ${
+                      m.role === "user"
+                        ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white"
+                        : "prose prose-sm dark:prose-invert"
+                    }`}
+                  >
+                    {m.role === "user" ? (
+                      <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                    ) : (
+                      // Pass required props to AIMessage, including modelName from data
+                      <AIMessage
+                        message={m}
+                        messageIndex={index}
+                        messages={messages}
+                        availableModels={availableModels}
+                        // append={append} // Remove append prop
+                        chatId={chatId} // Pass string UUID
+                        // Pass the extracted modelName
+                        modelName={modelName}
+                        // Pass the new handler for reload
+                        onRegenerate={handleReloadWithMessage}
+                        // Remove the old handler prop
+                        // onRegenerationStart={handleRegenerationStarted}
+                      />
+                    )}
+                  </div>
+                  {m.role === "user" && (
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        <FaUser />
+                      </AvatarFallback>
+                    </Avatar>
                   )}
                 </div>
-                {m.role === "user" && (
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>
-                      <FaUser />
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
-            )
+              );
+            }
           )}
           {status === "streaming" && (
             <div className="flex items-center gap-3">

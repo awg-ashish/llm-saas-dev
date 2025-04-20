@@ -36,4 +36,6 @@ export interface ChatMessage {
   media_url: string | null;
   credits_used: number | null;
   created_at: string | null;
+  // Optional field to hold the model name, fetched via JOIN or added from stream data
+  modelName?: string;
 }

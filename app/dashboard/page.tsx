@@ -23,7 +23,7 @@ export default async function DashboardPage() {
 
   if (!user && process.env.NODE_ENV !== "development") {
     // A server component can return plain JSX
-    <p>Please Login</p>;
+    return <p>Please Login</p>;
   }
 
   const initial = await getInitialChatData();

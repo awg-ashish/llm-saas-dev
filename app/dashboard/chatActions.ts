@@ -221,7 +221,8 @@ export async function loadChatMessages(chatId: string): Promise<Message[]> {
 
   const { data, error } = await supabase
     .from("chat_messages")
-    .select("id, role, content, created_at, model_id") // Include model_id if needed later
+    // Join with models table to get both model_name and slug
+    .select("*, models(id, model_name, slug)") // Add id and slug to the selection
     .eq("chat_id", chatId)
     .eq("user_id", user.id) // Ensure user owns the messages (RLS should also handle this)
     .order("created_at", { ascending: true });
@@ -238,6 +239,8 @@ export async function loadChatMessages(chatId: string): Promise<Message[]> {
     content: string;
     created_at: string;
     model_id: number | null;
+    // Expect a single related object with model details
+    models: { id: number; model_name: string; slug: string } | null;
   };
 
   // Map Supabase rows to Vercel AI SDK Message type, filtering for valid UI roles
@@ -251,7 +254,12 @@ export async function loadChatMessages(chatId: string): Promise<Message[]> {
       role: msg.role as "user" | "assistant", // More specific cast
       content: msg.content,
       createdAt: new Date(msg.created_at),
-      // Add other fields if needed, e.g., data: { modelId: msg.model_id }
+      // Include both modelName and modelSlug in data
+      data: {
+        modelId: msg.model_id,
+        modelName: msg.models?.model_name ?? null,
+        modelSlug: msg.models?.slug ?? null,
+      },
     }));
 
   return messages;
@@ -316,7 +324,7 @@ export async function saveMessage(
   modelId?: number
 ): Promise<void> {
   const supabase = await createClient();
-
+  console.log(`[saveMessage] Saving message with model ID: ${modelId}`);
   const {
     data: { user },
     error: userError,

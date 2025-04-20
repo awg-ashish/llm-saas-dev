@@ -104,7 +104,7 @@ export async function createChat(
 }
 
 export async function renameChat(
-  chatId: number,
+  chatId: string, // Changed to string for UUID
   newTitle: string
 ): Promise<BoolResult> {
   const supabase = await createClient();
@@ -117,7 +117,7 @@ export async function renameChat(
 }
 
 export async function moveChat(
-  chatId: number,
+  chatId: string, // Changed to string for UUID
   folderId: number | null
 ): Promise<BoolResult> {
   const supabase = await createClient();
@@ -129,7 +129,7 @@ export async function moveChat(
   return error ? { success: false, error: error.message } : { success: true };
 }
 
-export async function deleteChat(chatId: number): Promise<BoolResult> {
+export async function deleteChat(chatId: string): Promise<BoolResult> {
   const supabase = await createClient();
 
   const { error: msgErr } = await supabase
@@ -147,7 +147,7 @@ export async function deleteChat(chatId: number): Promise<BoolResult> {
 // MESSAGES
 // ──────────────────────────────────────────────────────────────────────────────
 export async function createChatMessage(
-  chatId: number,
+  chatId: string, // Changed to string for UUID
   role: string,
   content: string,
   modelId?: number,
@@ -178,7 +178,7 @@ export async function createChatMessage(
 }
 
 export async function getChatMessages(
-  chatId: number
+  chatId: string // Changed to string for UUID
 ): Promise<Ok<ChatMessage[]> | Fail> {
   const supabase = await createClient();
   const { data, error } = await supabase

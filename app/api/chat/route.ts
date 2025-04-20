@@ -13,8 +13,26 @@ function getBaseUrl() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { model, messages }: { model: string; messages: Message[] } = body;
-
+    console.log(`[API/chat/route] Incoming request body Data and parts:`, {
+      ...body,
+    });
+    const {
+      model,
+      messages,
+      selectedModel,
+      selectedModelId,
+    }: {
+      model: string;
+      messages: Message[];
+      selectedModel: string;
+      selectedModelId: any;
+    } = body;
+    console.log(
+      "[API/chat/route] Incoming body params:",
+      model,
+      selectedModel,
+      selectedModelId
+    );
     if (!model || !messages) {
       return NextResponse.json(
         { error: "Missing model or messages in request body" },

@@ -6,7 +6,7 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
-  console.log("[Middleware] Incoming cookies:", request.cookies.getAll());
+  // console.log("[Middleware] Incoming cookies:", request.cookies.getAll());
   // Development mode bypass has been removed
   // Now authentication works the same in both development and production
   // A "Skip Authentication" link is available in the UI for development mode
@@ -41,14 +41,14 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  console.log(
-    "[Middleware] User auth status:",
-    user ? `Authenticated (${user.email})` : "Not authenticated"
-  );
-  console.log("[Middleware] Path:", request.nextUrl.pathname);
+  // console.log(
+  //   "[Middleware] User auth status:",
+  //   user ? `Authenticated (${user.email})` : "Not authenticated"
+  // );
+  // console.log("[Middleware] Path:", request.nextUrl.pathname);
 
   if (user) {
-    console.log("[Middleware] Checking auth routes...");
+    // console.log("[Middleware] Checking auth routes...");
     if (
       request.nextUrl.pathname.startsWith("/login") ||
       request.nextUrl.pathname.startsWith("/auth")
@@ -56,15 +56,15 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
   } else {
-    console.log("[Middleware] Checking protected routes...");
+    // console.log("[Middleware] Checking protected routes...");
     if (request.nextUrl.pathname.startsWith("/dashboard")) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
   }
 
-  console.log(
-    "[Middleware] Final response cookies:",
-    supabaseResponse.cookies.getAll()
-  );
+  // console.log(
+  //   "[Middleware] Final response cookies:",
+  //   supabaseResponse.cookies.getAll()
+  // );
   return supabaseResponse;
 }

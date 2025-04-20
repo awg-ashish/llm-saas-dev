@@ -86,6 +86,7 @@ export default async function ChatPage({ params }: ChatPageProps) {
       console.error(`Failed to fetch chat data for ${chatId}:`, chatError);
     } else {
       initialModelId = chatData?.model_id;
+      console.log(initialModelId);
     }
   } catch (error) {
     console.error(`Error fetching model for chat ${chatId}:`, error);

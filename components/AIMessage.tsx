@@ -1,20 +1,24 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, SyntheticEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+
 import { markdownComponents } from "./MarkdownComponents";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, RefreshCw } from "lucide-react"; // Added RefreshCw
+import { Copy, Check, RefreshCw } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
-import { Message, UseChatHelpers } from "@ai-sdk/react"; // Added imports
-import { ModelData } from "@/app/dashboard/actions"; // Added import
+import { Message, UseChatHelpers } from "@ai-sdk/react";
+import { ModelData } from "@/app/dashboard/actions";
+import { toast } from "sonner";
+import { extractModelFromSlug } from "@/utils/extract-model-name";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem, // Keep if needed, maybe remove
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -27,14 +31,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Update props interface
 interface AIMessageProps {
   message: Message;
   messageIndex: number;
   messages: Message[];
   availableModels: ModelData[];
-  append: UseChatHelpers["append"];
-  chatId?: string; // Changed to string
+  chatId?: string; // stored as string in DB
+  modelName?: string | null; // model used for this AI reply
+  onRegenerate: (modelSlug: string, modelId: number | null) => void;
 }
 
 export const AIMessage: React.FC<AIMessageProps> = ({
@@ -42,45 +46,50 @@ export const AIMessage: React.FC<AIMessageProps> = ({
   messageIndex,
   messages,
   availableModels,
-  append,
+  chatId,
+  modelName,
+  onRegenerate,
 }) => {
-  const { content } = message; // Extract content from message
+  const { content } = message;
   const { isCopied, handleCopy } = useCopyToClipboard({ text: content });
-  const [regenModel, setRegenModel] = useState<string>(
-    availableModels[0]?.slug || ""
+  // State to hold the selected ModelData object for regeneration
+  const [regenModelObject, setRegenModelObject] = useState<ModelData | null>(
+    availableModels[0] || null // Default to the first available model object
   );
 
-  const handleRegenerate = () => {
-    const userMessage = messages[messageIndex - 1];
-    // Ensure there is a preceding message and it's from the user
-    if (!userMessage || userMessage.role !== "user") {
-      console.error("Cannot regenerate without a preceding user message.");
-      // Optionally show a toast notification here
+  // Handler for when the regeneration model selection changes
+  const handleRegenModelChange = (selectedSlug: string) => {
+    const selectedModel = availableModels.find(
+      (model) => model.slug === selectedSlug
+    );
+    setRegenModelObject(selectedModel || null); // Store the selected object
+  };
+
+  /**
+   * Regenerate the current AI response using the preceding user message.
+   * Works whether invoked from a React event (SyntheticEvent) or a Radix UI
+   * event (plain DOM Event). Uses the new onRegenerate prop.
+   */
+  const handleRegenerate = (e?: Event | SyntheticEvent<Element, Event>) => {
+    e?.preventDefault?.();
+
+    // Check if a model object is selected
+    if (!regenModelObject) {
+      toast.error("Please select a model to regenerate with.");
       return;
     }
 
+    // Call the parent's handler with the selected slug and ID
     console.log(
-      `Regenerating message ${message.id} using model ${regenModel} based on user prompt: "${userMessage.content}"`
+      `[AIMessage] Calling onRegenerate with slug: ${regenModelObject.slug}, id: ${regenModelObject.id}`
     );
-
-    // Append the user message again with the selected model
-    append(
-      { role: "user", content: userMessage.content },
-      {
-        body: {
-          model: regenModel, // Pass the selected model slug
-          // Optionally pass chatId if needed by backend for context, though useChat usually handles this
-          // chatId: chatId
-        },
-      }
-    );
+    onRegenerate(regenModelObject.slug, regenModelObject.id);
   };
 
   return (
     <div>
-      <div
-        className={`rounded-lg max-w-full bg-gradient-to-r from-slate-50 to-slate-200 prose prose-sm dark:prose-invert p-4`}
-      >
+      {/* AI message bubble */}
+      <div className="rounded-lg max-w-full bg-gradient-to-r from-slate-50 to-slate-200 prose prose-sm dark:prose-invert p-4">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
@@ -89,8 +98,10 @@ export const AIMessage: React.FC<AIMessageProps> = ({
           {content}
         </ReactMarkdown>
       </div>
-      {/* Container for action buttons */}
+
+      {/* Action bar */}
       <div className="flex items-center gap-1 mt-1">
+        {/* Copy button */}
         <Button
           onClick={handleCopy}
           size="icon"
@@ -106,31 +117,40 @@ export const AIMessage: React.FC<AIMessageProps> = ({
           <span className="sr-only">Copy message</span>
         </Button>
 
-        <span className="text-xs text-muted-foreground px-1">
-          "Unknown model"
-        </span>
+        {/* Model tag */}
+        {modelName && (
+          <span className="text-xs text-muted-foreground px-1">
+            {modelName.includes(":")
+              ? extractModelFromSlug(modelName)
+              : modelName}
+          </span>
+        )}
 
-        {/* Regenerate Dropdown */}
+        {/* Regenerate dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               size="icon"
               variant="ghost"
               className="h-6 w-6 text-muted-foreground hover:text-foreground"
-              disabled={messageIndex === 0} // Disable if it's the first message
+              disabled={messageIndex === 0}
               title="Regenerate response"
             >
               <RefreshCw className="h-4 w-4" />
               <span className="sr-only">Regenerate</span>
             </Button>
           </DropdownMenuTrigger>
+
           <DropdownMenuContent align="start" className="w-56">
-            {" "}
-            {/* Adjust width as needed */}
             <DropdownMenuLabel>Regenerate with:</DropdownMenuLabel>
             <DropdownMenuSeparator />
+
+            {/* Model selector */}
             <div className="p-2">
-              <Select value={regenModel} onValueChange={setRegenModel}>
+              <Select
+                value={regenModelObject?.slug || ""}
+                onValueChange={handleRegenModelChange}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>
@@ -143,15 +163,13 @@ export const AIMessage: React.FC<AIMessageProps> = ({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Regenerate button */}
             <DropdownMenuItem
-              asChild // Use asChild to make the whole item clickable like a button
+              asChild
               className="mt-1 cursor-pointer"
-              onSelect={(e) => {
-                e.preventDefault(); // Prevent dropdown from closing immediately if needed
-                handleRegenerate();
-              }}
+              onSelect={(e) => handleRegenerate(e)}
             >
-              {/* Use a Button inside DropdownMenuItem for better styling/semantics */}
               <Button size="sm" className="w-full justify-center">
                 Regenerate
               </Button>
